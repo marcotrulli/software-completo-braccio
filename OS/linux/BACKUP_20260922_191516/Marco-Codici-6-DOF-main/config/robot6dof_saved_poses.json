@@ -1,0 +1,97 @@
+{
+  "version": 29,
+  "type": "saved_poses_and_motion",
+  "timestamp": "2026-09-22T16:17:26.825Z",
+  "target": [
+    -296.7218529988962,
+    -472.78559362896243,
+    117.97397446198153
+  ],
+  "smoothWeight": 100,
+  "postureMode": "min_j2",
+  "jointSpeeds": [
+    20,
+    15,
+    23,
+    34,
+    90,
+    90
+  ],
+  "globalSpeed": 200,
+  "trailSettings": {
+    "enabled": false,
+    "thickness": 3,
+    "opacity": 0.85,
+    "color": "#00f0ff",
+    "autoClear": true
+  },
+  "physicsConfig": {
+    "payload": {
+      "enabled": false,
+      "mass": 420,
+      "dimX": 45,
+      "dimY": 45,
+      "dimZ": 45,
+      "color": "#ff8c00"
+    },
+    "motors": [
+      {
+        "name": "J1 Base Yaw",
+        "weight": 65,
+        "maxTorque": 40
+      },
+      {
+        "name": "J2 Spalla Pitch",
+        "weight": 65,
+        "maxTorque": 80
+      },
+      {
+        "name": "J3 Braccio Roll",
+        "weight": 55,
+        "maxTorque": 28
+      },
+      {
+        "name": "J4 Gomito Pitch",
+        "weight": 60,
+        "maxTorque": 40
+      },
+      {
+        "name": "J5 Polso Roll",
+        "weight": 45,
+        "maxTorque": 20
+      },
+      {
+        "name": "J6 Pinza Pitch",
+        "weight": 35,
+        "maxTorque": 20
+      }
+    ],
+    "stlWeights": {
+      "base_finita.stl": 600,
+      "coperchio_base_rotante.stl": 160,
+      "braccio_1.stl": 280,
+      "collegamento_giunti_braccio_2.stl": 65,
+      "braccio_2.stl": 280,
+      "collegamento_giunti_braccio_3.stl": 55,
+      "braccio_fine.stl": 150,
+      "collegamento_giunti_braccio_1_vecchio.stl": 100
+    },
+    "fea": {
+      "enabled": true,
+      "showCoM": true,
+      "showTorqueRings": true,
+      "showBaseCircle": true
+    },
+    "torqueProtection": true
+  },
+  "poses": {
+    "posa_corrente": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+path: C:/Users/Marco Trulli/Desktop/Marco-Codici-6-DOF-main/Marco-Codici-6-DOF-main/vision/ml/yolo_dataset
+train: images
+val: images
+kpt_shape: [3, 3]
+flip_idx: [0, 1, 2]
+names: ['robot']

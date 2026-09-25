@@ -1,0 +1,38 @@
+{
+  "id": "cap_2026-09-22T21-52-31_mud7mlad",
+  "image": "cap_2026-09-22T21-52-31_mud7mlad.jpg",
+  "imageAnnotated": "cap_2026-09-22T21-52-31_mud7mlad_annotated.jpg",
+  "depth": "cap_2026-09-22T21-52-31_mud7mlad.depth.bin",
+  "created": "2026-09-22T21:52:31.813Z",
+  "q": [
+    -74.97,
+    39.53,
+    -0.01,
+    82.58,
+    0,
+    -30.06
+  ],
+  "note": "llm-approve-t11",
+  "joints": [
+    {
+      "label": "BASE",
+      "x": 244,
+      "y": 288,
+      "z": 1060
+    },
+    {
+      "label": "G1",
+      "x": 357,
+      "y": 209,
+      "z": 959
+    },
+    {
+      "label": "G2",
+      "x": 428,
+      "y": 288,
+      "z": 990
+    }
+  ],
+  "approved": true,
+  "source": "llm-vision-pair"
+}

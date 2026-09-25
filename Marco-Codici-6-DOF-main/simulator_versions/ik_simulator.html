@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Digital Twin — Braccio 6DOF</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root{
+    --bg:#0b0f10; --panel:#12181a; --panel2:#161d1f; --line:#243033;
+    --ink:#d9e6e6; --dim:#7f9294; --accent:#5ee6c8; --accent2:#ff9d4d;
+    --bad:#ff6767; --good:#5ee6c8; --mono:'IBM Plex Mono','Courier New',monospace;
+    --sans:'IBM Plex Sans',Arial,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans);}
+  #app{display:grid;grid-template-columns:340px 1fr 340px;height:100%;}
+  @media (max-width:900px){#app{grid-template-columns:1fr;grid-template-rows:auto 50vh auto;height:auto;min-height:100%;}}
+
+  .panel{background:var(--panel);border-right:1px solid var(--line);padding:16px;overflow-y:auto;}
+  .panel.right{border-right:none;border-left:1px solid var(--line);}
+  h1{font-family:var(--mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);
+     margin:0 0 4px 0;font-weight:600;}
+  .sub{font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:18px;letter-spacing:.04em;}
+
+  .block{margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--line);}
+  .block:last-child{border-bottom:none;}
+  .block h2{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+     margin:0 0 10px 0;}
+
+  .row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  .row label{font-family:var(--mono);font-size:11px;color:var(--ink);width:70px;flex-shrink:0;}
+  .row input[type=range]{flex:1;accent-color:var(--accent);}
+  .row input[type=number]{width:64px;background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+     font-family:var(--mono);font-size:11px;padding:3px 5px;border-radius:3px;}
+  .row .val{font-family:var(--mono);font-size:11px;color:var(--accent);width:52px;text-align:right;flex-shrink:0;}
+  .row.limited label{color:var(--accent2);}
+
+  .tabbar{display:flex;gap:2px;margin-bottom:16px;background:var(--panel2);padding:2px;border-radius:6px;}
+  .tabbtn{flex:1;background:transparent;border:none;color:var(--dim);font-family:var(--mono);font-size:10px;
+     letter-spacing:.06em;text-transform:uppercase;padding:8px 4px;border-radius:5px;cursor:pointer;}
+  .tabbtn.active{background:var(--panel);color:var(--accent);}
+
+  button.act{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+     font-family:var(--mono);font-size:11px;padding:10px;border-radius:5px;cursor:pointer;letter-spacing:.03em;
+     transition:border-color .15s;}
+  button.act:hover{border-color:var(--accent);}
+  button.primary{background:var(--accent);color:#062622;border:none;font-weight:600;}
+  button.primary:hover{opacity:.9;}
+
+  .status{font-family:var(--mono);font-size:11px;padding:10px;border-radius:5px;background:var(--panel2);
+     border:1px solid var(--line);margin-top:10px;line-height:1.6;}
+  .status .good{color:var(--good);}
+  .status .bad{color:var(--bad);}
+  .status .dim{color:var(--dim);}
+
+  #canvas-wrap{position:relative;background:radial-gradient(ellipse at 50% 30%, #0f1517 0%, #080b0c 100%);}
+  #canvas-wrap canvas{display:block;width:100%;height:100%;}
+  .hint{position:absolute;bottom:10px;left:12px;font-family:var(--mono);font-size:10px;color:var(--dim);
+     letter-spacing:.03em;}
+
+  .barwrap{background:var(--panel2);border-radius:3px;height:6px;overflow:hidden;margin-top:4px;}
+  .bar{height:100%;background:var(--accent);}
+
+  .legend{font-family:var(--mono);font-size:10px;color:var(--dim);display:flex;gap:14px;margin-top:6px;}
+  .legend span.sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:middle;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="panel">
+    <h1>Digital Twin</h1>
+    <div class="sub">Stessa cinematica &amp; IK del firmware C++<br>— nessun hardware richiesto</div>
+
+    <div class="block">
+      <h2>Geometria (mm) — modifica quando hai le misure CAD</h2>
+      <div class="row"><label>J1→J2</label><input type="number" id="g_d12" value="50"></div>
+      <div class="row"><label>J2→J3</label><input type="number" id="g_L1" value="240"></div>
+      <div class="row"><label>J3→J4</label><input type="number" id="g_d34" value="50"></div>
+      <div class="row"><label>J4→J5</label><input type="number" id="g_L2" value="240"></div>
+      <div class="row"><label>J5→J6</label><input type="number" id="g_d56" value="50"></div>
+      <div class="row"><label>J6→pinza</label><input type="number" id="g_Lg" value="80"></div>
+      <button class="act" id="applyGeo">Applica geometria</button>
+    </div>
+
+    <div class="block">
+      <h2>Modalità</h2>
+      <div class="tabbar">
+        <button class="tabbtn active" data-mode="fk">Manuale (FK)</button>
+        <button class="tabbtn" data-mode="ik">Target (IK)</button>
+      </div>
+
+      <div id="fkPanel">
+        <div class="row limited"><label>J1 yaw</label><input type="range" id="j0" min="-135" max="135" value="0"><span class="val" id="j0v">0°</span></div>
+        <div class="row limited"><label>J2 pitch</label><input type="range" id="j1" min="-90" max="90" value="0"><span class="val" id="j1v">0°</span></div>
+        <div class="row limited"><label>J3 yaw</label><input type="range" id="j2" min="-135" max="135" value="0"><span class="val" id="j2v">0°</span></div>
+        <div class="row limited"><label>J4 pitch</label><input type="range" id="j3" min="-90" max="90" value="0"><span class="val" id="j3v">0°</span></div>
+        <div class="row limited"><label>J5 yaw</label><input type="range" id="j4" min="-135" max="135" value="0"><span class="val" id="j4v">0°</span></div>
+        <div class="row limited"><label>J6 pitch</label><input type="range" id="j5" min="-90" max="90" value="0"><span class="val" id="j5v">0°</span></div>
+      </div>
+
+      <div id="ikPanel" style="display:none;">
+        <div class="row"><label>X (mm)</label><input type="number" id="tx" value="300"></div>
+        <div class="row"><label>Y (mm)</label><input type="number" id="ty" value="0"></div>
+        <div class="row"><label>Z (mm)</label><input type="number" id="tz" value="200"></div>
+        <div class="row"><label>Peso U-rov.</label><input type="range" id="wu" min="0" max="1" step="0.01" value="0.70"><span class="val" id="wuv">0.70</span></div>
+        <div class="row"><label>Peso vicin.</label><input type="range" id="wn" min="0" max="1" step="0.01" value="0.50"><span class="val" id="wnv">0.50</span></div>
+        <button class="act primary" id="solveBtn">Risolvi IK →</button>
+      </div>
+    </div>
+
+    <div class="block">
+      <button class="act" id="restBtn">MOVE_TO_REST (test)</button>
+      <button class="act" id="zeroBtn" style="margin-top:6px;">Vai a 0° (config. riferimento)</button>
+    </div>
+  </div>
+
+  <div id="canvas-wrap">
+    <div class="hint">trascina = ruota vista · scroll = zoom</div>
+  </div>
+
+  <div class="panel right">
+    <h1>Diagnostica</h1>
+    <div class="sub">Verifica raggiungibilità, limiti, orientamento</div>
+
+    <div class="block">
+      <h2>Stato soluzione</h2>
+      <div class="status" id="solveStatus">In modalità manuale — muovi gli slider.</div>
+    </div>
+
+    <div class="block">
+      <h2>Angoli giunti risultanti</h2>
+      <div class="status" id="jointDump" style="font-size:10.5px;"></div>
+    </div>
+
+    <div class="block">
+      <h2>Orientamento pinza</h2>
+      <div class="sub" style="margin-bottom:6px;">componente verticale asse pinza — 0 = perfettamente orizzontale</div>
+      <div class="barwrap"><div class="bar" id="orientBar" style="width:0%"></div></div>
+      <div class="status" id="orientVal" style="margin-top:8px;">z = 0.000</div>
+    </div>
+
+    <div class="block">
+      <h2>Punto raggiunto (mm)</h2>
+      <div class="status" id="posDump"></div>
+    </div>
+
+    <div class="legend">
+      <span><span class="sw" style="background:#ff5c5c"></span>X</span>
+      <span><span class="sw" style="background:#5cff8a"></span>Y</span>
+      <span><span class="sw" style="background:#5c9dff"></span>Z (su)</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// =====================================================================
+// PORTING 1:1 della cinematica/IK dal firmware (src/kinematics.cpp,
+// src/ik_solver.cpp). Se cambi la logica nel firmware, replica la
+// modifica qui per mantenere il digital twin allineato.
+// =====================================================================
+const D2R = Math.PI/180, R2D = 180/Math.PI;
+
+function vsub(a,b){return [a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
+function vadd(a,b){return [a[0]+b[0],a[1]+b[1],a[2]+b[2]];}
+function vscale(a,s){return [a[0]*s,a[1]*s,a[2]*s];}
+function vnorm(a){return Math.sqrt(a[0]*a[0]+a[1]*a[1]+a[2]*a[2]);}
+
+function matI(){return [[1,0,0],[0,1,0],[0,0,1]];}
+function matMul(A,B){
+  const R=[[0,0,0],[0,0,0],[0,0,0]];
+  for(let i=0;i<3;i++)for(let j=0;j<3;j++){let s=0;for(let k=0;k<3;k++)s+=A[i][k]*B[k][j];R[i][j]=s;}
+  return R;
+}
+function matVec(A,v){
+  return [A[0][0]*v[0]+A[0][1]*v[1]+A[0][2]*v[2],
+          A[1][0]*v[0]+A[1][1]*v[1]+A[1][2]*v[2],
+          A[2][0]*v[0]+A[2][1]*v[1]+A[2][2]*v[2]];
+}
+function rotZ(a){const c=Math.cos(a),s=Math.sin(a);return [[c,-s,0],[s,c,0],[0,0,1]];}
+function rotY(a){const c=Math.cos(a),s=Math.sin(a);return [[c,0,s],[0,1,0],[-s,0,c]];}
+
+// Ritorna { points:[P0..P6] (per il disegno), axis:[x,y,z] (asse pinza) }
+function forwardKinematics(thRad, geo){
+  let R = matI();
+  let P = [0,0,0];
+  const points=[P.slice()];
+  function step(angle, len, yaw){
+    R = matMul(R, yaw ? rotZ(angle) : rotY(angle));
+    const localZ = matVec(R,[0,0,1]);
+    P = vadd(P, vscale(localZ, len));
+    points.push(P.slice());
+  }
+  step(thRad[0], geo.d12, true);
+  step(thRad[1], geo.L1,  false);
+  step(thRad[2], geo.d34, true);
+  step(thRad[3], geo.L2,  false);
+  step(thRad[4], geo.d56, true);
+  step(thRad[5], geo.Lg,  false);
+  const axis = matVec(R,[0,0,1]);
+  return {points, axis, end: P};
+}
+
+function numericJacobian(thRad, geo){
+  const eps=1e-4;
+  const base = forwardKinematics(thRad, geo);
+  const J=[[],[],[],[]];
+  for(let i=0;i<6;i++){
+    const p = thRad.slice(); p[i]+=eps;
+    const fk = forwardKinematics(p, geo);
+    J[0][i]=(fk.end[0]-base.end[0])/eps;
+    J[1][i]=(fk.end[1]-base.end[1])/eps;
+    J[2][i]=(fk.end[2]-base.end[2])/eps;
+    J[3][i]=(fk.axis[2]-base.axis[2])/eps;
+  }
+  return J;
+}
+
+function solveLinear4(A,b){
+  const M=A.map(r=>r.slice()), rhs=b.slice(), N=4;
+  for(let col=0;col<N;col++){
+    let piv=col, best=Math.abs(M[col][col]);
+    for(let r=col+1;r<N;r++) if(Math.abs(M[r][col])>best){best=Math.abs(M[r][col]);piv=r;}
+    if(best<1e-9) return null;
+    if(piv!==col){[M[col],M[piv]]=[M[piv],M[col]];[rhs[col],rhs[piv]]=[rhs[piv],rhs[col]];}
+    for(let r=0;r<N;r++){
+      if(r===col) continue;
+      const f=M[r][col]/M[col][col];
+      for(let c=col;c<N;c++) M[r][c]-=f*M[col][c];
+      rhs[r]-=f*rhs[col];
+    }
+  }
+  return M.map((row,i)=>rhs[i]/row[i]);
+}
+
+const JOINT_LIMITS = [[-135,135],[-90,90],[-135,135],[-90,90],[-135,135],[-90,90]];
+function withinLimits(deg){ return deg.every((v,i)=> v>=JOINT_LIMITS[i][0]-0.01 && v<=JOINT_LIMITS[i][1]+0.01); }
+function clampToLimits(deg){ return deg.map((v,i)=>Math.min(JOINT_LIMITS[i][1],Math.max(JOINT_LIMITS[i][0],v))); }
+
+function intermediateHeights(thRad, geo){
+  let R=matI(), P=[0,0,0];
+  function step(angle,len,yaw){ R=matMul(R, yaw?rotZ(angle):rotY(angle)); const lz=matVec(R,[0,0,1]); P=vadd(P,vscale(lz,len)); }
+  step(thRad[0],geo.d12,true);
+  step(thRad[1],geo.L1,false);
+  step(thRad[2],geo.d34,true);
+  const z1=P[2];
+  step(thRad[3],geo.L2,false);
+  step(thRad[4],geo.d56,true);
+  const z2=P[2];
+  return [z1,z2];
+}
+
+function solveFromSeed(target, seedDeg, geo){
+  let th = seedDeg.map(d=>d*D2R);
+  let lambda=8, posErr=1e9, orientErr=1e9;
+  const MAX_ITERS=80, POS_TOL=1.0, ORIENT_TOL=0.02;
+  for(let it=0; it<MAX_ITERS; it++){
+    const fk = forwardKinematics(th, geo);
+    const dp = vsub(target, fk.end);
+    const dOrient = 0 - fk.axis[2];
+    posErr = vnorm(dp); orientErr = Math.abs(dOrient);
+    if(posErr<POS_TOL && orientErr<ORIENT_TOL) break;
+
+    const J = numericJacobian(th, geo);
+    const e = [dp[0],dp[1],dp[2],dOrient];
+    const A=[[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]];
+    for(let r=0;r<4;r++)for(let c=0;c<4;c++){let s=0;for(let k=0;k<6;k++)s+=J[r][k]*J[c][k]; A[r][c]=s+(r===c?lambda*lambda:0);}
+    const y = solveLinear4(A,e);
+    if(!y){ lambda*=1.5; continue; }
+    const dtheta=[0,0,0,0,0,0];
+    for(let i=0;i<6;i++){let s=0;for(let r=0;r<4;r++)s+=J[r][i]*y[r]; dtheta[i]=s;}
+    const maxStep=6*D2R;
+    for(let i=0;i<6;i++){
+      let d=Math.max(-maxStep,Math.min(maxStep,dtheta[i]));
+      th[i]+=d;
+    }
+  }
+  const thetaDeg = th.map(r=>r*R2D);
+  const converged = posErr < 3.0 && orientErr < 0.06;
+  const valid = converged && withinLimits(thetaDeg);
+  let elbow=[0,0];
+  if(valid) elbow = intermediateHeights(th, geo);
+  return {valid, thetaDeg: valid?clampToLimits(thetaDeg):thetaDeg, posErr, orientErr, elbow};
+}
+
+function solveIK(target, currentDeg, geo, prefs){
+  const seeds = [
+    currentDeg.slice(),
+    [0,0,0,0,0,0],
+    [0,60,0,-60,0,0],
+    [0,-60,0,60,0,0],
+    [40,60,0,-60,0,0],
+    [-40,60,0,-60,0,0],
+    [0,45,60,-45,0,0],
+    [0,-45,-60,45,0,0],
+  ];
+  const cands = seeds.map(s=>solveFromSeed(target,s,geo));
+  const valid = cands.filter(c=>c.valid);
+  if(valid.length===0) return {reachable:false, tried:cands};
+
+  let bestZ=-1e9, worstZ=1e9;
+  valid.forEach(c=>{const avg=(c.elbow[0]+c.elbow[1])/2; if(avg>bestZ)bestZ=avg; if(avg<worstZ)worstZ=avg;});
+  const range = (bestZ-worstZ)<1e-6 ? 1 : (bestZ-worstZ);
+
+  let best=null, bestScore=-1e18;
+  valid.forEach(c=>{
+    const avg=(c.elbow[0]+c.elbow[1])/2;
+    const scoreU = (avg-worstZ)/range;
+    let moveCost=0;
+    for(let i=0;i<6;i++){const d=c.thetaDeg[i]-currentDeg[i]; moveCost+=d*d;}
+    const scoreClose = 1 - Math.min(moveCost/(180*180),1);
+    const total = prefs.wu*scoreU + prefs.wn*scoreClose;
+    if(total>bestScore){bestScore=total; best=c;}
+  });
+  return {reachable:true, theta:best.thetaDeg, posErr:best.posErr, orientErr:best.orientErr, nCandidates:valid.length};
+}
+
+// =====================================================================
+// SCENA THREE.JS
+// =====================================================================
+const wrap = document.getElementById('canvas-wrap');
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 1, 5000);
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+renderer.setPixelRatio(window.devicePixelRatio);
+wrap.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const dl = new THREE.DirectionalLight(0xffffff, 0.8); dl.position.set(300,500,400); scene.add(dl);
+const dl2 = new THREE.DirectionalLight(0x5ee6c8, 0.25); dl2.position.set(-300,200,-300); scene.add(dl2);
+
+// griglia pavimento (scala mm)
+const grid = new THREE.GridHelper(1200, 24, 0x243033, 0x1a2224);
+scene.add(grid);
+
+// assi di riferimento
+function axisLine(color, dir, len){
+  const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(dir[0]*len,dir[1]*len,dir[2]*len)]);
+  const mat = new THREE.LineBasicMaterial({color});
+  return new THREE.Line(geo, mat);
+}
+scene.add(axisLine(0xff5c5c,[1,0,0],150));
+scene.add(axisLine(0x5cff8a,[0,1,0],150));
+scene.add(axisLine(0x5c9dff,[0,0,1],150));
+
+const armGroup = new THREE.Group();
+scene.add(armGroup);
+let linkMeshes=[], jointMeshes=[], gripperAxisLine=null, targetMarker=null;
+
+function rebuildArmMeshes(){
+  linkMeshes.forEach(m=>armGroup.remove(m));
+  jointMeshes.forEach(m=>armGroup.remove(m));
+  linkMeshes=[]; jointMeshes=[];
+  const linkMat = new THREE.MeshStandardMaterial({color:0x2a3a3d, metalness:0.3, roughness:0.5});
+  const jointMat = new THREE.MeshStandardMaterial({color:0x5ee6c8, metalness:0.2, roughness:0.4, emissive:0x0d3a33});
+  for(let i=0;i<6;i++){
+    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(6,6,1,16), linkMat);
+    armGroup.add(cyl); linkMeshes.push(cyl);
+  }
+  for(let i=0;i<7;i++){
+    const sph = new THREE.Mesh(new THREE.SphereGeometry(i===6?9:10,16,16), i===6?new THREE.MeshStandardMaterial({color:0xff9d4d,emissive:0x552300}):jointMat);
+    armGroup.add(sph); jointMeshes.push(sph);
+  }
+  const axGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
+  gripperAxisLine = new THREE.Line(axGeo, new THREE.LineBasicMaterial({color:0xff9d4d, linewidth:2}));
+  armGroup.add(gripperAxisLine);
+
+  targetMarker = new THREE.Mesh(new THREE.SphereGeometry(7,12,12), new THREE.MeshBasicMaterial({color:0x5c9dff, wireframe:true}));
+  targetMarker.visible=false;
+  scene.add(targetMarker);
+}
+rebuildArmMeshes();
+
+function updateArmVisual(fk){
+  const pts = fk.points; // 7 punti in mm, Z=up già coerente col mondo three.js
+  for(let i=0;i<6;i++){
+    const a=new THREE.Vector3(...pts[i]), b=new THREE.Vector3(...pts[i+1]);
+    const mid=a.clone().add(b).multiplyScalar(0.5);
+    const dir=b.clone().sub(a);
+    const len=dir.length()||0.001;
+    const cyl=linkMeshes[i];
+    cyl.position.copy(mid);
+    cyl.scale.set(1,len,1);
+    cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.clone().normalize());
+  }
+  for(let i=0;i<7;i++) jointMeshes[i].position.set(...pts[i]);
+  const endP=new THREE.Vector3(...pts[6]);
+  const axisEnd = endP.clone().add(new THREE.Vector3(...fk.axis).multiplyScalar(40));
+  gripperAxisLine.geometry.setFromPoints([endP, axisEnd]);
+}
+
+// camera orbit manuale (no OrbitControls dependency)
+let camAz = 0.9, camEl = 0.45, camDist = 900, camTarget = new THREE.Vector3(0,150,0);
+function updateCamera(){
+  const x = camTarget.x + camDist*Math.cos(camEl)*Math.sin(camAz);
+  const y = camTarget.y + camDist*Math.sin(camEl);
+  const z = camTarget.z + camDist*Math.cos(camEl)*Math.cos(camAz);
+  camera.position.set(x,y,z);
+  camera.lookAt(camTarget);
+}
+let dragging=false, lastX=0,lastY=0;
+renderer.domElement.addEventListener('pointerdown', e=>{dragging=true; lastX=e.clientX; lastY=e.clientY;});
+window.addEventListener('pointerup', ()=>dragging=false);
+window.addEventListener('pointermove', e=>{
+  if(!dragging) return;
+  camAz -= (e.clientX-lastX)*0.006;
+  camEl = Math.max(-1.3, Math.min(1.4, camEl + (e.clientY-lastY)*0.006));
+  lastX=e.clientX; lastY=e.clientY;
+});
+renderer.domElement.addEventListener('wheel', e=>{
+  camDist = Math.max(200, Math.min(2500, camDist + e.deltaY*0.6));
+  e.preventDefault();
+}, {passive:false});
+
+function resize(){
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  renderer.setSize(w,h);
+  camera.aspect = w/h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+
+// =====================================================================
+// STATO APPLICAZIONE / UI
+// =====================================================================
+let geo = {d12:50, L1:240, d34:50, L2:240, d56:50, Lg:80};
+let currentDeg = [0,0,0,0,0,0];
+let displayDeg = [0,0,0,0,0,0]; // valore animato (per transizioni IK)
+let animTarget = null, animStart = null, animT0 = 0;
+const ANIM_MS = 900;
+
+function readGeoInputs(){
+  geo = {
+    d12: parseFloat(document.getElementById('g_d12').value)||0,
+    L1:  parseFloat(document.getElementById('g_L1').value)||0,
+    d34: parseFloat(document.getElementById('g_d34').value)||0,
+    L2:  parseFloat(document.getElementById('g_L2').value)||0,
+    d56: parseFloat(document.getElementById('g_d56').value)||0,
+    Lg:  parseFloat(document.getElementById('g_Lg').value)||0,
+  };
+}
+document.getElementById('applyGeo').addEventListener('click', ()=>{ readGeoInputs(); render(); });
+
+const sliders = [0,1,2,3,4,5].map(i=>document.getElementById('j'+i));
+const sliderVals = [0,1,2,3,4,5].map(i=>document.getElementById('j'+i+'v'));
+sliders.forEach((s,i)=>{
+  s.addEventListener('input', ()=>{
+    animTarget=null;
+    currentDeg[i]=parseFloat(s.value);
+    displayDeg[i]=currentDeg[i];
+    render();
+  });
+});
+
+document.querySelectorAll('.tabbtn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tabbtn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const mode = btn.dataset.mode;
+    document.getElementById('fkPanel').style.display = mode==='fk' ? 'block':'none';
+    document.getElementById('ikPanel').style.display = mode==='ik' ? 'block':'none';
+  });
+});
+
+const wuSlider=document.getElementById('wu'), wnSlider=document.getElementById('wn');
+wuSlider.addEventListener('input', ()=>document.getElementById('wuv').textContent=parseFloat(wuSlider.value).toFixed(2));
+wnSlider.addEventListener('input', ()=>document.getElementById('wnv').textContent=parseFloat(wnSlider.value).toFixed(2));
+
+document.getElementById('solveBtn').addEventListener('click', ()=>{
+  readGeoInputs();
+  const target = [parseFloat(document.getElementById('tx').value)||0,
+                   parseFloat(document.getElementById('ty').value)||0,
+                   parseFloat(document.getElementById('tz').value)||0];
+  const prefs = {wu: parseFloat(wuSlider.value), wn: parseFloat(wnSlider.value)};
+  const res = solveIK(target, currentDeg, geo, prefs);
+  const statusEl = document.getElementById('solveStatus');
+  targetMarker.visible = true;
+  targetMarker.position.set(target[0], target[1], target[2]);
+
+  if(!res.reachable){
+    statusEl.innerHTML = '<span class="bad">TARGET IRRAGGIUNGIBILE</span><br><span class="dim">Nessuna soluzione valida entro i limiti dei giunti — il robot reale NON si muoverebbe.</span>';
+    targetMarker.material.color.set(0xff6767);
+    return;
+  }
+  targetMarker.material.color.set(0x5ee6c8);
+  statusEl.innerHTML = `<span class="good">RAGGIUNGIBILE</span><br><span class="dim">Candidati validi:</span> ${res.nCandidates}<br><span class="dim">Errore posizione:</span> ${res.posErr.toFixed(2)} mm<br><span class="dim">Errore orientamento:</span> ${res.orientErr.toFixed(4)}`;
+
+  animStart = currentDeg.slice();
+  animTarget = res.theta.slice();
+  currentDeg = res.theta.slice();
+  animT0 = performance.now();
+});
+
+document.getElementById('restBtn').addEventListener('click', ()=>{
+  const rest=[0,-60,0,-60,0,0]; // stesso default di robot_params.h — aggiorna se lo cambi
+  animStart=currentDeg.slice(); animTarget=rest.slice(); currentDeg=rest.slice(); animT0=performance.now();
+});
+document.getElementById('zeroBtn').addEventListener('click', ()=>{
+  const z=[0,0,0,0,0,0];
+  animStart=currentDeg.slice(); animTarget=z.slice(); currentDeg=z.slice(); animT0=performance.now();
+});
+
+function easeInOutCubic(t){ return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+
+function updateAnimation(){
+  if(!animTarget) return;
+  const t = Math.min(1, (performance.now()-animT0)/ANIM_MS);
+  const e = easeInOutCubic(t);
+  for(let i=0;i<6;i++) displayDeg[i] = animStart[i] + (animTarget[i]-animStart[i])*e;
+  for(let i=0;i<6;i++){ sliders[i].value = displayDeg[i]; sliderVals[i].textContent = displayDeg[i].toFixed(1)+'°'; }
+  if(t>=1) animTarget=null;
+}
+
+function render(){
+  if(!animTarget){
+    for(let i=0;i<6;i++){ displayDeg[i]=currentDeg[i]; sliderVals[i].textContent = currentDeg[i].toFixed(1)+'°'; }
+  }
+  const thRad = displayDeg.map(d=>d*D2R);
+  const fk = forwardKinematics(thRad, geo);
+  updateArmVisual(fk);
+
+  document.getElementById('jointDump').innerHTML = displayDeg.map((d,i)=>`J${i+1}: ${d.toFixed(1)}°`).join('<br>');
+  document.getElementById('posDump').innerHTML = `X: ${fk.end[0].toFixed(1)}<br>Y: ${fk.end[1].toFixed(1)}<br>Z: ${fk.end[2].toFixed(1)}`;
+  const oz = fk.axis[2];
+  document.getElementById('orientVal').innerHTML = `z = ${oz.toFixed(4)} ${Math.abs(oz)<0.02?'<span class="good">(orizzontale ✓)</span>':'<span class="bad">(non orizzontale)</span>'}`;
+  document.getElementById('orientBar').style.width = Math.min(100, Math.abs(oz)*300) + '%';
+  document.getElementById('orientBar').style.background = Math.abs(oz)<0.02 ? 'var(--good)' : 'var(--bad)';
+}
+
+function loop(){
+  updateAnimation();
+  if(animTarget) render(); else {
+    // ancora un ultimo render per riflettere eventuale stato finale
+  }
+  render();
+  updateCamera();
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+
+resize();
+render();
+loop();
+</script>
+</body>
+</html>

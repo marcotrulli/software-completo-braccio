@@ -1,0 +1,55 @@
+{
+  "version": 2,
+  "groups": [
+    {
+      "name": "Ciclo_Demo_Lavoro",
+      "steps": [
+        {
+          "name": "Posa Iniziale Home",
+          "q": [
+            0,
+            47,
+            0,
+            -69,
+            7,
+            -68
+          ],
+          "wait_s": 2,
+          "wait_user": false,
+          "action": 0,
+          "grab_mass_g": 0
+        },
+        {
+          "name": "Punto Presa Target",
+          "q": [
+            35,
+            10,
+            -10,
+            -65,
+            10,
+            55
+          ],
+          "wait_s": 0,
+          "wait_user": true,
+          "action": 0,
+          "grab_mass_g": 0
+        },
+        {
+          "name": "Ritorno a Riposo",
+          "q": [
+            0,
+            47,
+            0,
+            -69,
+            7,
+            -68
+          ],
+          "wait_s": 1.5,
+          "wait_user": false,
+          "action": 0,
+          "grab_mass_g": 0
+        }
+      ]
+    }
+  ]
+}

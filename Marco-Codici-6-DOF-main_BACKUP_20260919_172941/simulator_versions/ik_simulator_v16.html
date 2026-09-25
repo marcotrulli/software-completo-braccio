@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Digital Twin — Braccio 6 DOF v16</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<style>
+:root{--bg:#091012;--panel:#111a1d;--line:#26383d;--ink:#d9e9ea;--muted:#89a0a4;--a:#62e6c7;--warn:#ffbc5c;--bad:#ff7171;font-family:Arial,sans-serif}*{box-sizing:border-box}html,body,#app{height:100%;margin:0;background:var(--bg);color:var(--ink)}#app{display:grid;grid-template-columns:320px 1fr 300px}.panel{padding:16px;background:var(--panel);overflow:auto;border-right:1px solid var(--line)}.right{border-left:1px solid var(--line);border-right:0}h1{font:600 14px monospace;letter-spacing:.1em;color:var(--a);margin:0 0 6px}.sub,h2,.hint{font:11px monospace;color:var(--muted)}h2{letter-spacing:.08em;margin:0 0 9px;text-transform:uppercase}.block{border-bottom:1px solid var(--line);padding:0 0 15px;margin:0 0 16px}.row{display:flex;gap:7px;align-items:center;margin:7px 0}.row label{width:88px;font:11px monospace}.row input[type=number]{width:76px}.row input[type=range]{flex:1}input{background:#0b1315;color:var(--ink);border:1px solid var(--line);border-radius:3px;padding:4px;font:11px monospace}.val{width:47px;text-align:right;color:var(--a);font:11px monospace}button{width:100%;margin-top:7px;padding:9px;background:#172328;color:var(--ink);border:1px solid var(--line);border-radius:4px;cursor:pointer;font:11px monospace}button:hover{border-color:var(--a)}button.primary{background:var(--a);color:#06231e;border:0;font-weight:bold}.tabs{display:flex;gap:4px}.tabs button.active{border-color:var(--a);color:var(--a)}.status{font:11px/1.6 monospace;background:#0b1315;padding:10px;border:1px solid var(--line);border-radius:4px}.good{color:var(--a)}.bad{color:var(--bad)}.warn{color:var(--warn)}#view{position:relative;min-width:0}.hint{position:absolute;left:12px;bottom:10px;pointer-events:none}@media(max-width:950px){#app{grid-template-columns:1fr;grid-template-rows:auto 55vh auto}.panel{border-bottom:1px solid var(--line)}.right{border-left:0}}
+.toolnav{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:14px 0}.toolnav button{margin:0}.toolnav button.active{background:var(--a);color:#06231e}.toolpane[hidden]{display:none}.treeItem{padding:7px;margin:3px 0;border:1px solid transparent;border-radius:3px;font:11px monospace;cursor:pointer}.treeItem:hover,.treeItem.selected{border-color:var(--a);background:#173038}.treeItem:before{content:'◇ ';color:var(--a)}
+</style></head>
+<body><div id="app">
+<aside class="panel"><h1>DIGITAL TWIN 6 DOF · V16</h1><div class="sub">Z è verticale · unità in mm</div><div class="toolnav"><button class="tool active" data-pane="motion">Movimento</button><button class="tool" data-pane="model">Modello STL</button><button class="tool" data-pane="setup">Giunti / dummy</button><button class="tool" data-pane="speed">Velocità motori</button><button class="tool" data-pane="project">Progetto</button></div>
+<section class="block"><h2>Geometria</h2>
+<div class="row"><label>J1 → J2</label><input id="d12" type="number" value="50"></div><div class="row"><label>J2 → J3</label><input id="L1" type="number" value="240"></div><div class="row"><label>J3 → J4</label><input id="d34" type="number" value="50"></div><div class="row"><label>J4 → J5</label><input id="L2" type="number" value="240"></div><div class="row"><label>J5 → J6</label><input id="d56" type="number" value="50"></div><div class="row"><label>J6 → pinza</label><input id="Lg" type="number" value="80"></div><div class="row"><label>Diametro bracci</label><input id="diameter" type="number" min="4" max="60" value="18"></div><button id="applyGeo">Applica geometria</button></section>
+<section class="block"><h2>Modalità</h2><div class="tabs"><button class="tab active" data-tab="fk">Manuale (FK)</button><button class="tab" data-tab="ik">Target (IK)</button></div>
+<div id="fk"><div id="sliders"></div><button id="vertical">Posa verticale iniziale</button><button id="rest">Posa di riposo (0, 47, 0, -70, 0, -70)</button></div>
+<div id="ik" hidden><div class="sub">Il target è trascinabile anche nella scena.</div><div class="row"><label>X</label><input id="tx" type="number" value="250"></div><div class="row"><label>Y</label><input id="ty" type="number" value="0"></div><div class="row"><label>Z</label><input id="tz" type="number" value="250"></div><div class="row"><label>Pinza orizz.</label><input id="horizontal" type="checkbox"><span class="val"></span></div>
+<div class="row"><label>Ciclo Rest</label><input id="useCycle" type="checkbox" checked><span class="val">Rest→T→3s→Rest</span></div>
+<div class="row"><label>Protezione motori</label><input id="smoothWeight" type="range" min="0" max="100" value="50"><span class="val" id="smoothWeightVal">50%</span></div>
+<div class="sub" style="margin:4px 0 8px;color:var(--a)">Posa Rest: J1=0°, J2=47°, J3=0°, J4=-70°, J5=0°, J6=-70°</div><button class="primary" id="solve">Esegui ciclo Target</button><button id="solveDirect">Vai solo al Target (Diretto)</button><button id="showTarget">Mostra/nascondi target</button></div></section>
+<section class="block" id="speedPane"><h2>Velocità Motori e Giunti</h2><div class="sub">Regola la velocità angolare massima (°/s) di ogni singolo asse ed il moltiplicatore globale.</div><div class="row"><label>Velocità globale</label><input id="globalSpeed" type="range" min="10" max="200" value="100"><span class="val" id="globalSpeedVal">100%</span></div><div id="speedSliders"></div><button id="resetSpeeds">Ripristina velocità predefinite</button></section>
+<section class="block"><h2>STL · pezzi del braccio</h2><button class="primary" id="scanFolder">Seleziona cartella e importa tutti gli STL</button><div class="sub" style="margin-top:6px">Legge ed importa automaticamente tutti i file .stl presenti nella cartella di lavoro.</div><div style="margin-top:10px" class="sub">Oppure carica manualmente:</div><input id="stlFiles" type="file" accept=".stl" multiple><div class="row"><label>Pezzo selez.</label><select id="assetSelect"><option>Nessun STL</option></select></div><div class="row"><label>Scala</label><input id="assetScale" type="number" step="0.001" value="1"></div><div class="row"><label>Offset X</label><input id="assetX" type="number" value="0"></div><div class="row"><label>Offset Y</label><input id="assetY" type="number" value="0"></div><div class="row"><label>Offset Z</label><input id="assetZ" type="number" value="0"></div><div class="row"><label>Rot. X/Y/Z</label><input id="assetRX" type="number" value="0"><input id="assetRY" type="number" value="0"><input id="assetRZ" type="number" value="0"></div><div class="row"><label>Braccio rigido</label><select id="assetAttach"><option value="-1">Mondo (fisso)</option><option value="0">Braccio 1 · J1 → J2</option><option value="1">Braccio 2 · J2 → J3</option><option value="2">Braccio 3 · J3 → J4</option><option value="3">Braccio 4 · J4 → J5</option><option value="4">Braccio 5 · J5 → J6</option><option value="5">Braccio 6 · J6 → pinza</option><option value="6">End effector / pinza</option></select></div><button id="applyAsset">Applica al pezzo STL</button><button id="deleteAsset">Elimina STL selezionato</button></section>
+<section class="block"><h2>Dummy point e giunti</h2><div class="row"><label>Dummy</label><select id="dummySelect"><option value="target">Target</option><option value="endpoint">Endpoint pinza</option><option value="0">J1 base</option><option value="1">J2</option><option value="2">J3</option><option value="3">J4</option><option value="4">J5</option><option value="5">J6</option><option value="6">Endpoint riferimento</option></select></div><div class="row"><label>X</label><input id="dummyX" type="number" value="0"></div><div class="row"><label>Y</label><input id="dummyY" type="number" value="0"></div><div class="row"><label>Z</label><input id="dummyZ" type="number" value="0"></div><button id="applyDummy">Posiziona dummy</button><button id="captureJoints">Cattura giunti dalla posa</button><button id="useDummyGeometry">Usa distanze dummy nell’IK</button></section>
+<section class="block" id="projectPane"><h2>Progetto, pose ed ESP32</h2><div class="row"><label>Nome posa</label><input id="poseName" type="text" value="rest_point"></div><button id="savePose">Salva posa corrente</button><select id="poseList" size="5" style="width:100%;margin-top:7px"></select><button id="playPose">Simula posa selezionata</button><button id="deletePose">Elimina posa</button><button id="chooseFolder">Scegli cartella progetto</button><button id="recoverStl">Recupera file STL e progetto</button><button id="writeProject">Aggiorna JSON progetto ora</button><button id="exportCpp">Esporta IK C++ completa ESP32</button><div class="sub" style="margin-top:8px">L’app aggiorna automaticamente <b>robot6dof_project.json</b> e conserva i file nella memoria locale del browser (IndexedDB).</div></section>
+<div class="sub">Per muovere la vista: trascina sullo sfondo · rotella: zoom.</div></aside>
+<main id="view"><div class="hint">TARGET: trascina il punto per X/Y · Shift + trascina per Z</div></main>
+<aside class="panel right"><h1>SCENA / DIAGNOSTICA</h1><section class="block"><h2>Gerarchia pezzi</h2><div class="sub">Clicca un elemento per selezionarlo e colorarlo nella scena.</div><div id="hierarchy"></div></section><section class="block"><h2>Soluzione IK</h2><div class="status" id="status">Posa iniziale di riposo (Rest).</div></section><section class="block"><h2>Angoli giunti</h2><div class="status" id="angles"></div></section><section class="block"><h2>Punto pinza</h2><div class="status" id="position"></div></section><section class="block"><h2>Nota IK v16</h2><div class="sub">Controllo di velocità indipendente su ciascun asse (J1..J6) e moltiplicatore globale.</div></section></aside>
+</div><script>
+const D=Math.PI/180, R=180/Math.PI, limits=[[-135,135],[-90,90],[-135,135],[-90,90],[-135,135],[-90,90]];
+const defaultRestPose=[0,47,0,-70,0,-70];
+const defaultJointSpeeds=[60,45,60,60,90,90]; // °/s
+let jointSpeeds=defaultJointSpeeds.slice(), globalSpeed=100;
+let geo={d12:50,L1:240,d34:50,L2:240,d56:50,Lg:80,diameter:18}, q=defaultRestPose.slice(), shownQ=q.slice(), target=[250,0,250], anim=null, smoothWeight=50;
+const $=id=>document.getElementById(id), clamp=(x,a,b)=>Math.max(a,Math.min(b,x)), norm=v=>Math.hypot(...v), sub=(a,b)=>a.map((x,i)=>x-b[i]);
+function mul(A,B){let C=[[0,0,0],[0,0,0],[0,0,0]];for(let i=0;i<3;i++)for(let j=0;j<3;j++)for(let k=0;k<3;k++)C[i][j]+=A[i][k]*B[k][j];return C}function mv(A,v){return A.map(r=>r[0]*v[0]+r[1]*v[1]+r[2]*v[2])}function rz(a){let c=Math.cos(a),s=Math.sin(a);return [[c,-s,0],[s,c,0],[0,0,1]]}function ry(a){let c=Math.cos(a),s=Math.sin(a);return [[c,0,s],[0,1,0],[-s,0,c]]}
+
+function fk(deg){let M=[[1,0,0],[0,1,0],[0,0,1]],p=[0,0,0],pts=[p.slice()],frames=[];[[0,geo.d12,1],[1,geo.L1,0],[2,geo.d34,1],[3,geo.L2,0],[4,geo.d56,1],[5,geo.Lg,0]].forEach(([i,l,z])=>{M=mul(M,z?rz(deg[i]*D):ry(deg[i]*D));frames.push(M.map(row=>row.slice()));p=p.map((v,k)=>v+mv(M,[0,0,l])[k]);pts.push(p.slice())});return {pts,frames,end:p,axis:mv(M,[0,0,1])}}
+function jac(deg,orient){let b=fk(deg), rows=orient?4:3,J=Array.from({length:rows},()=>Array(6));for(let i=0;i<6;i++){let p=deg.slice();p[i]+=.02;let f=fk(p);for(let r=0;r<3;r++)J[r][i]=(f.end[r]-b.end[r])/.02;if(orient)J[3][i]=(f.axis[2]-b.axis[2])/.02}return J}
+function solveLinear(A,b){let n=b.length,M=A.map((r,i)=>r.slice().concat(b[i]));for(let k=0;k<n;k++){let p=k;for(let i=k+1;i<n;i++)if(Math.abs(M[i][k])>Math.abs(M[p][k]))p=i;if(Math.abs(M[p][k])<1e-10)return null;[M[k],M[p]]=[M[p],M[k]];let z=M[k][k];for(let j=k;j<=n;j++)M[k][j]/=z;for(let i=0;i<n;i++)if(i!==k){let f=M[i][k];for(let j=k;j<=n;j++)M[i][j]-=f*M[k][j]}}return M.map(r=>r[n])}
+
+/* === SLIDERS VELOCITÀ GIUNTI === */
+function buildSpeedSliders(){
+  let container=$('speedSliders');
+  container.innerHTML='';
+  for(let i=0;i<6;i++){
+    let d=document.createElement('div');
+    d.className='row';
+    d.innerHTML=`<label>Velocità J${i+1}</label><input type="range" min="10" max="180" value="${jointSpeeds[i]}"><span class="val">${jointSpeeds[i]}°/s</span>`;
+    d.querySelector('input').oninput=e=>{
+      jointSpeeds[i]=+e.target.value;
+      d.querySelector('.val').textContent=jointSpeeds[i]+'°/s';
+      scheduleProjectWrite();
+    };
+    container.appendChild(d);
+  }
+}
+buildSpeedSliders();
+
+$('globalSpeed').oninput=e=>{
+  globalSpeed=+e.target.value;
+  $('globalSpeedVal').textContent=globalSpeed+'%';
+  scheduleProjectWrite();
+};
+$('resetSpeeds').onclick=()=>{
+  jointSpeeds=defaultJointSpeeds.slice();
+  globalSpeed=100;
+  $('globalSpeed').value=100;
+  $('globalSpeedVal').textContent='100%';
+  buildSpeedSliders();
+  scheduleProjectWrite();
+  $('status').innerHTML='<span class="good">Velocità ripristinate ai valori predefiniti.</span>';
+};
+
+/* === SOLVER IK MORBIDO === */
+function ikOne(t,seed,orient){
+  let x=seed.slice(),best={score:Infinity,pos:Infinity,axis:1,x:x.slice()};
+  for(let it=0;it<450;it++){
+    let f=fk(x),p=sub(t,f.end),az=f.axis[2],score=norm(p)+(orient?Math.abs(az)*120:0);
+    if(score<best.score)best={score,pos:norm(p),axis:az,x:x.slice()};
+    if(norm(p)<1.2&&(!orient||Math.abs(az)<.02))return {ok:true,x,e:norm(p),axis:az};
+    let e=orient?[p[0],p[1],p[2],-az*120]:p,J=jac(x,orient),n=e.length,A=Array.from({length:n},()=>Array(n).fill(0));
+    for(let r=0;r<n;r++)for(let c=0;c<n;c++){
+      for(let k=0;k<6;k++)A[r][c]+=J[r][k]*J[c][k];
+      A[r][c]+=(r===c?3:0);
+    }
+    let y=solveLinear(A,e);
+    if(!y)break;
+    for(let k=0;k<6;k++){
+      let d=0;
+      for(let r=0;r<n;r++)d+=J[r][k]*y[r];
+      x[k]=clamp(x[k]+clamp(d,-5,5),limits[k][0],limits[k][1]);
+    }
+  }
+  return {ok:false,x:best.x,e:best.pos,axis:best.axis,score:best.score};
+}
+
+function poseCost(a,orient){
+  let cost=0;
+  let w=smoothWeight/50.0;
+  for(let i=0;i<6;i++){
+    let pref=defaultRestPose[i];
+    let factor=(i===1)?0.08:(i===2||i===4)?0.02:0.002;
+    cost+=(a[i]-pref)*(a[i]-pref)*factor;
+  }
+  if(orient && w>0){
+    cost+=w*(Math.abs(a[1])*15.0 + Math.abs(a[2])*8.0 + Math.abs(a[4])*8.0);
+    if(Math.abs(a[1])>45){
+      cost+=w*Math.pow(Math.abs(a[1])-45,2)*5.0;
+    }
+  }
+  return cost;
+}
+
+function ik(t,seed,orient){
+  let starts=[seed,defaultRestPose,[0,35,0,-70,0,0],[0,20,0,-40,0,0],[0,-20,0,40,0,0],[0,50,0,-90,0,0],[0,-35,0,70,0,0],[0,0,0,-60,0,0],[45,30,-45,-60,0,0],[-45,-30,45,60,0,0]];
+  let out=starts.map(s=>ikOne(t,s,orient)),good=out.filter(r=>r.ok);
+  if(good.length){
+    good.sort((a,b)=>(a.e-b.e)*100+0.002*(poseCost(a.x,orient)-poseCost(b.x,orient)));
+    return good[0];
+  }
+  out.sort((a,b)=>a.score-b.score+0.001*(poseCost(a.x,orient)-poseCost(b.x,orient)));
+  return out[0];
+}
+
+/* === CALCOLO DINAMICO DEL TEMPO DI TRANSIZIONE IN BASE ALLE VELOCITÀ === */
+function calculateMoveDuration(fromPose, toPose){
+  let maxTimeMs=300;
+  let mult=globalSpeed/100.0;
+  for(let i=0;i<6;i++){
+    let delta=Math.abs(toPose[i]-fromPose[i]);
+    let effSpeed=Math.max(1, jointSpeeds[i]*mult);
+    let timeMs=(delta/effSpeed)*1000;
+    if(timeMs>maxTimeMs) maxTimeMs=timeMs;
+  }
+  return maxTimeMs;
+}
+
+function setPose(next){
+  let from=shownQ.slice();
+  let durationMs=calculateMoveDuration(from, next);
+  anim={from,to:next.slice(),at:performance.now(),duration:durationMs};
+  q=next.slice();
+  return durationMs;
+}
+
+/* === MOTORE DI SEQUENZA AUTOMATICA === */
+let sequenceTimer=null, isRunningSequence=false;
+function stopSequence(){
+  if(sequenceTimer) clearTimeout(sequenceTimer);
+  sequenceTimer=null;
+  isRunningSequence=false;
+}
+
+function executeTargetSequence(targetPose){
+  stopSequence();
+  isRunningSequence=true;
+  
+  $('status').innerHTML='<span class="good">Passo 1/4: Raggiungimento posa Rest (0, 47, 0, -70, 0, -70)...</span>';
+  let dur1=setPose(defaultRestPose);
+  
+  sequenceTimer=setTimeout(()=>{
+    $('status').innerHTML='<span class="good">Passo 2/4: Movimento verso Target XYZ...</span>';
+    let dur2=setPose(targetPose);
+    
+    sequenceTimer=setTimeout(()=>{
+      let count=3;
+      $('status').innerHTML=`<span class="good">Passo 3/4: Target raggiunto! Pausa di 3 secondi (${count}s)...</span>`;
+      
+      let holdInterval=setInterval(()=>{
+        count--;
+        if(count>0){
+          $('status').innerHTML=`<span class="good">Passo 3/4: Target raggiunto! Pausa di ${count} secondi...</span>`;
+        }else{
+          clearInterval(holdInterval);
+          $('status').innerHTML='<span class="good">Passo 4/4: Ritorno in posa Rest...</span>';
+          let dur3=setPose(defaultRestPose);
+          
+          sequenceTimer=setTimeout(()=>{
+            $('status').innerHTML='<span class="good">Ciclo completato! Braccio fermo in posa Rest in attesa di nuovi comandi.</span>';
+            isRunningSequence=false;
+          }, dur3+100);
+        }
+      },1000);
+    }, dur2+100);
+  }, dur1+100);
+}
+
+const view=$('view'),scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(45,1,1,4000),renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(devicePixelRatio);view.appendChild(renderer.domElement);scene.add(new THREE.HemisphereLight(0xffffff,0x17242a,1.2));let light=new THREE.DirectionalLight(0xffffff,.9);light.position.set(300,500,400);scene.add(light);scene.add(new THREE.GridHelper(1200,24,0x31505a,0x1a2c32));
+function V(p){return new THREE.Vector3(p[0],p[2],-p[1])}function jointQuaternion(M){let ex=V([M[0][0],M[1][0],M[2][0]]),ey=V([M[0][1],M[1][1],M[2][1]]),ez=V([M[0][2],M[1][2],M[2][2]]);return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(ex,ey,ez))}function axis(c,to){let g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),V(to)]);scene.add(new THREE.Line(g,new THREE.LineBasicMaterial({color:c})))}axis(0xff5c5c,[180,0,0]);axis(0x5cff8a,[0,180,0]);axis(0x5c9dff,[0,0,180]);
+let arm=new THREE.Group();scene.add(arm);let links=[],joints=[],marker=new THREE.Mesh(new THREE.SphereGeometry(11,16,16),new THREE.MeshBasicMaterial({color:0x5c9dff,wireframe:true}));scene.add(marker);
+const dummyRoot=new THREE.Group();scene.add(dummyRoot);const dummyMat=new THREE.MeshBasicMaterial({color:0xffbc5c,wireframe:true});let dummyJoints=Array.from({length:7},()=>[0,0,0]),endpointDummy=[0,0,0],dummyMeshes=[];for(let i=0;i<8;i++){let m=new THREE.Mesh(new THREE.SphereGeometry(8,12,12),dummyMat);dummyRoot.add(m);dummyMeshes.push(m)}
+const assets=[],assetRoot=new THREE.Group();scene.add(assetRoot);let selectedAssetIndex=-1,pendingAssetConfigs=[],projectDir=null,projectTimer=null;
+
+/* === INDEXED DB MANAGING FOR OFFLINE STL PERSISTENCE === */
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    let req=indexedDB.open('DigitalTwin6DOF_v16',1);
+    req.onupgradeneeded=e=>{
+      let db=e.target.result;
+      if(!db.objectStoreNames.contains('assets')) db.createObjectStore('assets',{keyPath:'name'});
+      if(!db.objectStoreNames.contains('project')) db.createObjectStore('project',{keyPath:'id'});
+    };
+    req.onsuccess=e=>resolve(e.target.result);
+    req.onerror=e=>reject(e);
+  });
+}
+async function saveToIndexedDB(){
+  try{
+    let db=await openDB();
+    let tx=db.transaction(['assets','project'],'readwrite');
+    let assetStore=tx.objectStore('assets');
+    assetStore.clear();
+    for(let a of assets){
+      if(a.buffer){
+        assetStore.put({
+          name: a.name,
+          buffer: a.buffer,
+          config: {
+            id: a.id, name: a.name, attach: a.attach,
+            scale: a.mesh.scale.x,
+            x: a.mesh.position.x, y: -a.mesh.position.z, z: a.mesh.position.y,
+            rx: a.mesh.rotation.x*R, ry: a.mesh.rotation.z*R, rz: a.mesh.rotation.y*R
+          }
+        });
+      }
+    }
+    tx.objectStore('project').put({id:'current', data: projectSnapshot()});
+  }catch(e){console.warn('IndexedDB save error:',e);}
+}
+async function loadFromIndexedDB(){
+  try{
+    let db=await openDB();
+    let tx=db.transaction(['assets','project'],'readonly');
+    let projReq=tx.objectStore('project').get('current');
+    projReq.onsuccess=async()=>{
+      let proj=projReq.result?.data;
+      if(proj) applyProject(proj);
+      let stlReq=tx.objectStore('assets').getAll();
+      stlReq.onsuccess=async()=>{
+        let savedAssets=stlReq.result||[];
+        if(savedAssets.length>0 && assets.length===0){
+          clearAssets();
+          for(let sa of savedAssets){
+            let blob=new Blob([sa.buffer]);
+            let file=new File([blob],sa.name);
+            await addStlFile(file,sa.config);
+          }
+          refreshAssets();
+          if(assets.length) highlightAsset(0);
+          $('status').innerHTML=`<span class="good">Ripristinati ${savedAssets.length} STL dalla memoria locale (IndexedDB).</span>`;
+        }
+      };
+    };
+  }catch(e){console.warn('IndexedDB load error:',e);}
+}
+
+function newAssetId(fileName){let stem=fileName.replace(/\.stl$/i,'').trim()||'pezzo',n=1,id=stem+'_'+n;while(assets.some(a=>a.id===id))id=stem+'_'+(++n);return id}
+function highlightAsset(index){selectedAssetIndex=index;assets.forEach((a,i)=>{a.mesh.material.color.set(i===index?0xffbc5c:0xa9c5c9);a.mesh.material.emissive&&a.mesh.material.emissive.set(i===index?0x5a3100:0x000000)});document.querySelectorAll('.treeItem').forEach((el,i)=>el.classList.toggle('selected',i===index));if(index>=0){$('assetSelect').value=index;readAsset(assets[index])}}
+function refreshHierarchy(){let h=$('hierarchy');h.innerHTML='<div class="sub">└─ Robot 6 DOF</div>';assets.forEach((a,i)=>{let e=document.createElement('div');e.className='treeItem'+(i===selectedAssetIndex?' selected':'');e.textContent='   '+a.id+'  →  '+(a.attach<0?'Mondo':a.attach===6?'Pinza':'Braccio '+(a.attach+1));e.onclick=()=>highlightAsset(i);h.appendChild(e)})}
+function rebuild(){arm.clear();links=[];joints=[];let lm=new THREE.MeshStandardMaterial({color:0x29484d,metalness:.35,roughness:.45}),jm=new THREE.MeshStandardMaterial({color:0x61e6c7,emissive:0x093f36});for(let i=0;i<6;i++){let m=new THREE.Mesh(new THREE.CylinderGeometry(geo.diameter/2,geo.diameter/2,1,18),lm);arm.add(m);links.push(m)}for(let i=0;i<7;i++){let m=new THREE.Mesh(new THREE.SphereGeometry(geo.diameter*.62,16,16),jm);arm.add(m);joints.push(m)}}rebuild();
+function draw(){let f=fk(shownQ);for(let i=0;i<6;i++){let a=V(f.pts[i]),b=V(f.pts[i+1]),d=b.clone().sub(a),m=links[i];m.position.copy(a).add(b).multiplyScalar(.5);m.scale.set(1,d.length(),1);m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize())}f.pts.forEach((p,i)=>joints[i].position.copy(V(p)));marker.position.copy(V(target));dummyJoints.forEach((p,i)=>dummyMeshes[i].position.copy(V(p)));dummyMeshes[7].position.copy(V(endpointDummy));assets.forEach(a=>{let at=a.attach;if(at<0){a.root.position.set(0,0,0);a.root.quaternion.identity()}else{let ji=at===6?5:at,point=at===6?f.end:f.pts[at];a.root.position.copy(V(point));a.root.quaternion.copy(jointQuaternion(f.frames[ji]))}});$('angles').innerHTML=shownQ.map((v,i)=>`J${i+1}: ${v.toFixed(1)}°`).join('<br>');$('position').innerHTML=`X: ${f.end[0].toFixed(1)}<br>Y: ${f.end[1].toFixed(1)}<br>Z: ${f.end[2].toFixed(1)}`}
+let az=.8,el=.45,dist=900,drag=false,last,dragTarget=false,dragPlane=null;function cam(){camera.position.set(dist*Math.cos(el)*Math.sin(az),250+dist*Math.sin(el),dist*Math.cos(el)*Math.cos(az));camera.lookAt(0,200,0)}function mouseRay(e){let r=renderer.domElement.getBoundingClientRect(),m=new THREE.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1),ray=new THREE.Raycaster();ray.setFromCamera(m,camera);return ray}function pointOnPlane(e,plane){let p=new THREE.Vector3();return mouseRay(e).ray.intersectPlane(plane,p)?p:null}renderer.domElement.addEventListener('pointerdown',e=>{let ray=mouseRay(e);dragTarget=ray.intersectObject(marker).length>0;drag=true;last={x:e.clientX,y:e.clientY};if(dragTarget){let n=e.shiftKey?new THREE.Vector3(1,0,0):new THREE.Vector3(0,1,0);dragPlane=new THREE.Plane().setFromNormalAndCoplanarPoint(n,V(target));renderer.domElement.setPointerCapture(e.pointerId)}});renderer.domElement.addEventListener('pointerup',e=>{drag=false;dragPlane=null;try{renderer.domElement.releasePointerCapture(e.pointerId)}catch(_){}});renderer.domElement.addEventListener('pointermove',e=>{if(!drag)return;if(dragTarget){let p=pointOnPlane(e,dragPlane);if(p){let phys=[p.x,-p.z,p.y];if(e.shiftKey)target[2]=clamp(phys[2],-100,700);else{target[0]=clamp(phys[0],-650,650);target[1]=clamp(phys[1],-650,650)}syncTarget();scheduleProjectWrite()}}else{az-=(e.clientX-last.x)*.006;el=clamp(el+(e.clientY-last.y)*.006,-1.2,1.3)}last={x:e.clientX,y:e.clientY}});renderer.domElement.addEventListener('wheel',e=>{dist=clamp(dist+e.deltaY*.55,250,2400);e.preventDefault()},{passive:false});
+function syncTarget(){['tx','ty','tz'].forEach((id,i)=>$(id).value=target[i].toFixed(0))}
+
+function tick(){
+  if(anim){
+    let dur=anim.duration||850;
+    let t=clamp((performance.now()-anim.at)/dur,0,1),s=t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+    shownQ=anim.from.map((v,i)=>v+(anim.to[i]-v)*s);
+    if(t===1)anim=null;
+  }
+  draw();cam();renderer.render(scene,camera);requestAnimationFrame(tick);
+}
+function resize(){renderer.setSize(view.clientWidth,view.clientHeight);camera.aspect=view.clientWidth/view.clientHeight;camera.updateProjectionMatrix()}addEventListener('resize',resize);resize();
+
+['J1 yaw','J2 pitch','J3 yaw','J4 pitch','J5 yaw','J6 pitch'].forEach((name,i)=>{let d=document.createElement('div');d.className='row';d.innerHTML=`<label>${name}</label><input type="range" min="${limits[i][0]}" max="${limits[i][1]}" value="${defaultRestPose[i]}"><span class="val">${defaultRestPose[i]}°</span>`;d.querySelector('input').oninput=e=>{q[i]=shownQ[i]=+e.target.value;d.querySelector('.val').textContent=q[i]+'°'};$('sliders').appendChild(d)});
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===b));$('fk').hidden=b.dataset.tab!=='fk';$('ik').hidden=b.dataset.tab!=='ik';marker.visible=b.dataset.tab==='ik'});['tx','ty','tz'].forEach((id,i)=>$(id).oninput=()=>target[i]=+$(id).value||0);
+$('smoothWeight').oninput=e=>{smoothWeight=+e.target.value;$('smoothWeightVal').textContent=smoothWeight+'%';scheduleProjectWrite();};
+$('applyGeo').onclick=()=>{Object.keys(geo).forEach(k=>geo[k]=+$(k).value||0);rebuild()};$('vertical').onclick=()=>setPose([0,0,0,0,0,0]);$('rest').onclick=()=>setPose(defaultRestPose);$('showTarget').onclick=()=>marker.visible=!marker.visible;
+
+function runIKCalculation(useCycle=true){
+  Object.keys(geo).forEach(k=>geo[k]=+$(k).value||0);
+  let res=ik(target,q,$('horizontal').checked);
+  if(res.ok){
+    if(useCycle && $('useCycle').checked){
+      executeTargetSequence(res.x);
+    }else{
+      stopSequence();
+      setPose(res.x);
+      $('status').innerHTML=`<span class="good">TARGET RAGGIUNGIBILE (Diretto)</span><br>J2: ${res.x[1].toFixed(1)}° | J3: ${res.x[2].toFixed(1)}° | J5: ${res.x[4].toFixed(1)}°<br>Errore finale: ${res.e.toFixed(2)} mm`;
+    }
+  }else{
+    $('status').innerHTML=`<span class="bad">TARGET NON RAGGIUNGIBILE</span><br>Errore minimo trovato: ${res.e.toFixed(1)} mm. Prova un punto più vicino o disattiva “Pinza orizz.”`;
+  }
+}
+$('solve').onclick=()=>runIKCalculation(true);
+$('solveDirect').onclick=()=>runIKCalculation(false);
+
+function selectedAsset(){return assets[+$('assetSelect').value]||null}function readAsset(a){if(!a)return;let m=a.mesh;$('assetScale').value=m.scale.x;$('assetX').value=m.position.x;$('assetY').value=(-m.position.z).toFixed(3);$('assetZ').value=m.position.y;$('assetRX').value=(m.rotation.x*R).toFixed(1);$('assetRY').value=(m.rotation.z*R).toFixed(1);$('assetRZ').value=(m.rotation.y*R).toFixed(1);$('assetAttach').value=a.attach}function refreshAssets(){let s=$('assetSelect'),old=s.value;s.innerHTML=assets.length?'':'<option>Nessun STL</option>';assets.forEach((a,i)=>{let o=document.createElement('option');o.value=i;o.textContent=a.id;s.appendChild(o)});s.value=assets.length?Math.min(+old||0,assets.length-1):'';readAsset(selectedAsset());refreshHierarchy()}function clearAssets(){while(assets.length){let a=assets.pop();assetRoot.remove(a.root);a.mesh.geometry.dispose();a.mesh.material.dispose()}selectedAssetIndex=-1}
+
+async function addStlFile(file,config=null){
+  let loader=new THREE.STLLoader(),buffer=await file.arrayBuffer(),g=loader.parse(buffer);
+  g.computeVertexNormals();g.center();
+  let mesh=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:0xa9c5c9,metalness:.25,roughness:.55})),root=new THREE.Group();
+  root.add(mesh);assetRoot.add(root);
+  let a={id:config?.id||newAssetId(file.name),name:file.name,root,mesh,attach:config?.attach??-1,buffer:buffer};
+  if(config){mesh.scale.setScalar(config.scale);mesh.position.set(config.x,config.z,-config.y);mesh.rotation.set(config.rx*D,config.rz*D,config.ry*D)}
+  assets.push(a);
+}
+
+$('assetSelect').onchange=()=>highlightAsset(+$('assetSelect').value);
+$('applyAsset').onclick=()=>{let a=selectedAsset();if(!a)return;let m=a.mesh,sc=Math.max(.0001,+$('assetScale').value||1);m.scale.setScalar(sc);m.position.set(+$('assetX').value||0,+$('assetZ').value||0,-(+$('assetY').value||0));m.rotation.set((+$('assetRX').value||0)*D,(+$('assetRZ').value||0)*D,(+$('assetRY').value||0)*D);a.attach=+$('assetAttach').value;refreshHierarchy();scheduleProjectWrite();$('status').innerHTML='<span class="good">STL aggiornato e progetto salvato.</span>'};
+$('deleteAsset').onclick=()=>{let i=+$('assetSelect').value,a=assets[i];if(!a)return;assetRoot.remove(a.root);a.mesh.geometry.dispose();a.mesh.material.dispose();assets.splice(i,1);selectedAssetIndex=-1;refreshAssets();scheduleProjectWrite();$('status').innerHTML='<span class="good">STL eliminato dal progetto.</span>'};
+
+/* === AUTO-SCAN DIRECTORY FOR .STL FILES === */
+async function scanProjectFolder(){
+  if(!window.showDirectoryPicker){$('status').innerHTML='<span class="bad">Questo browser non supporta l’accesso diretto alle cartelle. Usa il pulsante sfoglia.</span>';return}
+  try{
+    projectDir=await window.showDirectoryPicker({mode:'readwrite'});
+    let projConfig=null;
+    try{
+      let fh=await projectDir.getFileHandle('robot6dof_project.json');
+      projConfig=JSON.parse(await (await fh.getFile()).text());
+      applyProject(projConfig);
+    }catch(_){}
+    
+    let stlFilesFound=[];
+    for await (const entry of projectDir.values()){
+      if(entry.kind==='file' && entry.name.toLowerCase().endsWith('.stl')){
+        let file=await entry.getFile();
+        stlFilesFound.push(file);
+      }
+    }
+    
+    if(stlFilesFound.length===0){
+      $('status').innerHTML='<span class="warn">Nessun file .stl trovato nella cartella selezionata. Assicurati di aver messo gli STL lì.</span>';
+      return;
+    }
+    
+    clearAssets();
+    let configMap=new Map();
+    if(projConfig && projConfig.assets){
+      projConfig.assets.forEach(cfg=>configMap.set(cfg.name,cfg));
+    }
+    
+    for(let file of stlFilesFound){
+      let cfg=configMap.get(file.name)||null;
+      await addStlFile(file,cfg);
+    }
+    
+    refreshAssets();
+    if(assets.length) highlightAsset(0);
+    await writeProject();
+    await saveToIndexedDB();
+    $('status').innerHTML=`<span class="good">Scansione completata! Caricati ${stlFilesFound.length} file STL dalla cartella.</span><br>Progetto salvato in robot6dof_project.json e memoria locale.`;
+  }catch(e){
+    if(e.name!=='AbortError'){
+      console.error(e);
+      $('status').innerHTML='<span class="bad">Errore durante la scansione: '+e.message+'</span>';
+    }
+  }
+}
+$('scanFolder').onclick=scanProjectFolder;
+
+$('stlFiles').onchange=async e=>{
+  for(let file of e.target.files){
+    try{
+      await addStlFile(file);
+      if(projectDir){
+        try{
+          let fh=await projectDir.getFileHandle(file.name,{create:true}),w=await fh.createWritable();
+          await w.write(await file.arrayBuffer());await w.close();
+        }catch(err){console.warn('Scrittura STL su disk fallita:',err);}
+      }
+    }catch(_){$('status').innerHTML='<span class="bad">Impossibile leggere '+file.name+'</span>'}
+  }
+  refreshAssets();
+  if(assets.length){highlightAsset(assets.length-1);scheduleProjectWrite();$('status').innerHTML=`<span class="good">${assets.length} STL caricati.</span><br>Salvati nel progetto e nella memoria locale.`}
+};
+
+function dummyValue(){let v=$('dummySelect').value;if(v==='target')return target;if(v==='endpoint')return endpointDummy;return dummyJoints[+v]}function syncDummy(){let p=dummyValue();$('dummyX').value=p[0].toFixed(1);$('dummyY').value=p[1].toFixed(1);$('dummyZ').value=p[2].toFixed(1)}$('dummySelect').onchange=syncDummy;$('applyDummy').onclick=()=>{let p=dummyValue();p[0]=+$('dummyX').value||0;p[1]=+$('dummyY').value||0;p[2]=+$('dummyZ').value||0;if($('dummySelect').value==='target')syncTarget();scheduleProjectWrite();$('status').innerHTML='<span class="good">Dummy aggiornato</span><br>Il punto arancione è la nuova posizione di riferimento.'};$('captureJoints').onclick=()=>{let f=fk(shownQ);dummyJoints=f.pts.map(p=>p.slice());endpointDummy=f.end.slice();syncDummy();scheduleProjectWrite();$('status').innerHTML='<span class="good">Giunti catturati</span><br>I dummy arancioni seguono la posa attuale come riferimento.'};$('useDummyGeometry').onclick=()=>{let ds=[];for(let i=0;i<6;i++)ds.push(norm(sub(dummyJoints[i+1],dummyJoints[i])));if(ds.some(x=>x<.1)){$('status').innerHTML='<span class="bad">Dummy non validi</span><br>Cattura i giunti o assegna sette posizioni differenti.';return}['d12','L1','d34','L2','d56','Lg'].forEach((id,i)=>{$(id).value=ds[i].toFixed(1)});Object.keys(geo).forEach(k=>geo[k]=+$(k).value||0);scheduleProjectWrite();$('status').innerHTML='<span class="good">Geometria IK aggiornata</span><br>Le sei lunghezze derivano ora dai dummy consecutivi.'};
+let savedPoses={};function refreshPoses(){let s=$('poseList');s.innerHTML='';Object.keys(savedPoses).sort().forEach(n=>{let o=document.createElement('option');o.value=n;o.textContent=n;s.appendChild(o)})}$('savePose').onclick=()=>{let n=$('poseName').value.trim()||'pose_'+Object.keys(savedPoses).length;savedPoses[n]=q.slice();refreshPoses();$('poseList').value=n;scheduleProjectWrite();$('status').innerHTML='<span class="good">Posa salvata:</span> '+n};$('playPose').onclick=()=>{let n=$('poseList').value;if(n&&savedPoses[n])setPose(savedPoses[n])};$('deletePose').onclick=()=>{delete savedPoses[$('poseList').value];refreshPoses();scheduleProjectWrite()};
+
+function projectSnapshot(){return {version:16,geo,target,smoothWeight,jointSpeeds,globalSpeed,dummyJoints,endpointDummy,poses:savedPoses,assets:assets.map(a=>({id:a.id,name:a.name,attach:a.attach,scale:a.mesh.scale.x,x:a.mesh.position.x,y:-a.mesh.position.z,z:a.mesh.position.y,rx:a.mesh.rotation.x*R,ry:a.mesh.rotation.z*R,rz:a.mesh.rotation.y*R}))}}
+function applyProject(p){if(!p)return;geo=Object.assign(geo,p.geo||{});Object.keys(geo).forEach(k=>{if($(k))$(k).value=geo[k]});target=(p.target||target).slice();if(p.smoothWeight!==undefined){smoothWeight=p.smoothWeight;if($('smoothWeight'))$('smoothWeight').value=smoothWeight;if($('smoothWeightVal'))$('smoothWeightVal').textContent=smoothWeight+'%';}if(p.globalSpeed!==undefined){globalSpeed=p.globalSpeed;if($('globalSpeed'))$('globalSpeed').value=globalSpeed;if($('globalSpeedVal'))$('globalSpeedVal').textContent=globalSpeed+'%';}if(p.jointSpeeds){jointSpeeds=p.jointSpeeds.slice();buildSpeedSliders();}dummyJoints=(p.dummyJoints||dummyJoints).map(x=>x.slice());endpointDummy=(p.endpointDummy||endpointDummy).slice();savedPoses=p.poses||{};rebuild();syncTarget();syncDummy();refreshPoses()}
+async function writeProject(){if(!projectDir)return false;try{let fh=await projectDir.getFileHandle('robot6dof_project.json',{create:true}),w=await fh.createWritable();await w.write(JSON.stringify(projectSnapshot(),null,2));await w.close();return true}catch(e){return false}}
+function scheduleProjectWrite(){clearTimeout(projectTimer);projectTimer=setTimeout(()=>{writeProject();saveToIndexedDB();},350)}
+$('chooseFolder').onclick=async()=>{scanProjectFolder();};
+$('writeProject').onclick=async()=>{if(await writeProject()){await saveToIndexedDB();$('status').innerHTML='<span class="good">robot6dof_project.json e memoria locale aggiornati.</span>'}};
+$('recoverStl').onclick=async()=>{scanProjectFolder();};
+
+function download(name,text){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/plain'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}$('exportCpp').onclick=()=>{let g=geo,w=smoothWeight,gs=globalSpeed,cpp=`// Generato da Digital Twin 6DOF v16. Incolla questo file nel progetto ESP32.\n// Velocità giunti J1..J6 e Moltiplicatore globale.\n#pragma once\n#include <math.h>\n\nstruct Robot6DOFIK {\n static constexpr float d12=${g.d12}f,L1=${g.L1}f,d34=${g.d34}f,L2=${g.L2}f,d56=${g.d56}f,Lg=${g.Lg}f;\n static constexpr float smoothWeight=${w}.0f;\n static constexpr float globalSpeedFactor=${gs}.0f;\n static constexpr float jointMaxSpeed[6]={${jointSpeeds.map(s=>s+'.0f').join(',')}};\n static constexpr float defaultRest[6]={0.0f,47.0f,0.0f,-70.0f,0.0f,-70.0f};\n static constexpr float qMin[6]={-135,-90,-135,-90,-135,-90};\n static constexpr float qMax[6]={135,90,135,90,135,90};\n static constexpr float DEG=0.01745329251994329577f;\n static float clamp(float v,float a,float b){return v<a?a:(v>b?b:v);}\n static void mm(const float A[3][3],const float B[3][3],float C[3][3]){for(int i=0;i<3;i++)for(int j=0;j<3;j++){C[i][j]=0;for(int k=0;k<3;k++)C[i][j]+=A[i][k]*B[k][j];}}\n static void mv(const float A[3][3],const float v[3],float r[3]){for(int i=0;i<3;i++)r[i]=A[i][0]*v[0]+A[i][1]*v[1]+A[i][2]*v[2];}\n static void fk(const float q[6],float end[3],float axis[3]){float M[3][3]={{1,0,0},{0,1,0},{0,0,1}},T[3][3],p[3]={0,0,0};const float len[6]={d12,L1,d34,L2,d56,Lg};for(int i=0;i<6;i++){float a=q[i]*DEG,c=cosf(a),s=sinf(a);float Q[3][3]={{c,0,s},{0,1,0},{-s,0,c}};if(!(i&1)){Q[0][0]=c;Q[0][1]=-s;Q[0][2]=0;Q[1][0]=s;Q[1][1]=c;Q[1][2]=0;Q[2][0]=0;Q[2][1]=0;Q[2][2]=1;}mm(M,Q,T);for(int r=0;r<3;r++)for(int c2=0;c2<3;c2++)M[r][c2]=T[r][c2];float z[3]={0,0,len[i]},w[3];mv(M,z,w);for(int k=0;k<3;k++)p[k]+=w[k];}for(int k=0;k<3;k++){end[k]=p[k];axis[k]=M[k][2];}}\n static float posErr(const float a[3],const float b[3]){float x=a[0]-b[0],y=a[1]-b[1],z=a[2]-b[2];return sqrtf(x*x+y*y+z*z);}\n static bool linear(float A[4][4],float b[4],int n,float x[4]){for(int k=0;k<n;k++){int p=k;for(int i=k+1;i<n;i++)if(fabsf(A[i][k])>fabsf(A[p][k]))p=i;if(fabsf(A[p][k])<1e-9f)return false;for(int j=k;j<n;j++){float t=A[k][j];A[k][j]=A[p][j];A[p][j]=t;}float t=b[k];b[k]=b[p];b[p]=t;float z=A[k][k];for(int j=k;j<n;j++)A[k][j]/=z;b[k]/=z;for(int i=0;i<n;i++)if(i!=k){float f=A[i][k];for(int j=k;j<n;j++)A[i][j]-=f*A[k][j];b[i]-=f*b[k];}}for(int i=0;i<n;i++)x[i]=b[i];return true;}\n static bool solveSeed(const float target[3],const float seed[6],bool horizontal,float out[6],float &err){for(int i=0;i<6;i++)out[i]=seed[i];for(int it=0;it<450;it++){float end[3],ax[3];fk(out,end,ax);float e[4]={target[0]-end[0],target[1]-end[1],target[2]-end[2],-ax[2]*120};int n=horizontal?4:3;err=posErr(target,end);if(err<1.2f&&(!horizontal||fabsf(ax[2])<.02f))return true;float J[4][6]={0};for(int k=0;k<6;k++){float qp[6];for(int j=0;j<6;j++)qp[j]=out[j];qp[k]+=.02f;float ep[3],ap[3];fk(qp,ep,ap);for(int r=0;r<3;r++)J[r][k]=(ep[r]-end[r])/.02f;if(horizontal)J[3][k]=(ap[2]-ax[2])/.02f;}float A[4][4]={0},b[4],y[4];for(int r=0;r<n;r++){b[r]=e[r];for(int c=0;c<n;c++){for(int k=0;k<6;k++)A[r][c]+=J[r][k]*J[c][k];if(r==c)A[r][c]+=3;}}if(!linear(A,b,n,y))break;for(int k=0;k<6;k++){float d=0;for(int r=0;r<n;r++)d+=J[r][k]*y[r];out[k]=clamp(out[k]+clamp(d,-5,5),qMin[k],qMax[k]);}}float end[3],ax[3];fk(out,end,ax);err=posErr(target,end);return false;}\n static bool solveIK(float x,float y,float z,bool horizontal,const float current[6],float result[6],float &errorMm){float target[3]={x,y,z};float seeds[9][6]={{0,47,0,-70,0,-70},{0,35,0,-70,0,0},{0,20,0,-40,0,0},{0,-20,0,40,0,0},{0,50,0,-90,0,0},{0,-35,0,70,0,0},{0,0,0,-60,0,0},{45,30,-45,-60,0,0},{0,0,0,0,0,0}};for(int j=0;j<6;j++)seeds[8][j]=current[j];bool found=false;float best=1e30f,bestQ[6];float w=smoothWeight/50.0f;for(int s=0;s<9;s++){float q[6],e;bool ok=solveSeed(target,seeds[s],horizontal,q,e);if(ok){float cost=e*100;if(horizontal && w>0){cost+=w*(fabsf(q[1])*15.0f + fabsf(q[2])*8.0f + fabsf(q[4])*8.0f);if(fabsf(q[1])>45.0f) cost+=w*powf(fabsf(q[1])-45.0f,2)*5.0f;}for(int j=0;j<6;j++){float d=q[j]-defaultRest[j];float factor=(j==1?0.08f:(j==2||j==4)?0.02f:0.002f);cost+=factor*d*d;}if(cost<best){best=cost;errorMm=e;for(int j=0;j<6;j++)bestQ[j]=q[j];found=true;}}}if(found)for(int j=0;j<6;j++)result[j]=bestQ[j];return found;}\n};\n`;download('robot6dof_esp32_ik.h',cpp);$('status').innerHTML='<span class="good">IK C++ completa v16 esportata per ESP32.</span>'};
+document.querySelectorAll('.tool').forEach(b=>b.onclick=()=>{let pane=b.dataset.pane;document.querySelectorAll('.tool').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('aside.panel:first-child .block').forEach(s=>{let h=s.querySelector('h2')?.textContent||'',show=(pane==='motion'&&(h.includes('Geometria')||h.includes('Modalità')))||(pane==='model'&&h.includes('STL'))||(pane==='setup'&&h.includes('Dummy'))||(pane==='speed'&&s.id==='speedPane')||(pane==='project'&&s.id==='projectPane');s.hidden=!show;s.classList.add('toolpane')})});
+
+let f0=fk(q);dummyJoints=f0.pts.map(p=>p.slice());endpointDummy=f0.end.slice();marker.visible=false;syncTarget();syncDummy();refreshPoses();refreshHierarchy();tick();
+loadFromIndexedDB();
+</script><script>document.querySelector('.tool.active').click();</script></body></html>

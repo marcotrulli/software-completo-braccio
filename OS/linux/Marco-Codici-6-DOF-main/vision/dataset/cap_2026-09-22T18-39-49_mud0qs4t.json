@@ -1,0 +1,55 @@
+{
+  "id": "cap_2026-09-22T18-39-49_mud0qs4t",
+  "image": "cap_2026-09-22T18-39-49_mud0qs4t.jpg",
+  "imageAnnotated": "cap_2026-09-22T18-39-49_mud0qs4t_annotated.jpg",
+  "depth": null,
+  "created": "2026-09-22T18:39:49.997Z",
+  "q": null,
+  "note": "test-pair",
+  "joints": [
+    {
+      "label": "BASE",
+      "x": 310,
+      "y": 450,
+      "z": null
+    },
+    {
+      "label": "J1",
+      "x": 300,
+      "y": 390,
+      "z": null
+    },
+    {
+      "label": "J2",
+      "x": 270,
+      "y": 320,
+      "z": null
+    },
+    {
+      "label": "J3",
+      "x": 240,
+      "y": 280,
+      "z": null
+    },
+    {
+      "label": "J4",
+      "x": 220,
+      "y": 230,
+      "z": null
+    },
+    {
+      "label": "J5",
+      "x": 200,
+      "y": 200,
+      "z": null
+    },
+    {
+      "label": "PINZA",
+      "x": 190,
+      "y": 170,
+      "z": null
+    }
+  ],
+  "approved": true,
+  "source": "llm-vision-pair"
+}

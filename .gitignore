@@ -1,0 +1,37 @@
+# ============================================================
+#  Cosa NON viene caricato su GitHub
+#  (cartelle rigenerabili o generate: le ricrei con un comando)
+# ============================================================
+
+# --- Node.js ---
+node_modules/
+npm-debug.log
+
+# --- Python (venv della ML: ~5 GB) ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# --- Rust / Tauri (build: ~1,2 GB) ---
+target/
+
+# --- Output di build ---
+dist/
+build/
+bin/
+obj/
+
+# --- Log e cache rigenerabili ---
+*.log
+*.cache
+config/server_status.txt
+config/server_error.txt
+
+# --- File temporanei / sistema ---
+*.tmp
+*.temp
+*~
+Thumbs.db
+Desktop.ini
+.DS_Store

@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "poses": [
+    {
+      "name": "posa_corrente",
+      "q": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

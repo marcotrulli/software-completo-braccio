@@ -1,0 +1,17 @@
+{
+  "id": "cap_2026-09-22T17-42-13_mucyopf6",
+  "image": "cap_2026-09-22T17-42-13_mucyopf6.jpg",
+  "depth": "cap_2026-09-22T17-42-13_mucyopf6.depth.bin",
+  "created": "2026-09-22T17:42:13.938Z",
+  "q": [
+    -135,
+    22.42,
+    -4.96,
+    62.91,
+    -0.77,
+    4.69
+  ],
+  "note": "btn-scatta",
+  "joints": [],
+  "source": "kinect-capture"
+}

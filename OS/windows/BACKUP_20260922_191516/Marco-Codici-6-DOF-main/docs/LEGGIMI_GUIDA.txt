@@ -1,0 +1,34 @@
+========================================================================
+             DIGITAL TWIN 6 DOF — GUIDA PER QUALSIASI PC
+========================================================================
+
+Questo pacchetto è AL 100% PORTABILE e AUTONOMO.
+Non richiede installazioni, non ha percorsi fissi e funziona su qualsiasi
+computer Windows (anche da chiavetta USB o cartella condivisa).
+
+------------------------------------------------------------------------
+COME AVVIARE IL SIMULATORE SU UN ALTRO COMPUTER:
+------------------------------------------------------------------------
+
+Opzione 1 (Consigliata):
+  👉 Fai doppio clic su:  "DigitalTwin6DOF.exe"  (oppure "AVVIA_SIMULATORE.bat")
+     - Avvierà il server locale e aprirà automaticamente il browser predefinito.
+     - Carica in automatico tutti gli 8 pezzi STL e i 3 file JSON di configurazione!
+
+Opzione 2 (Senza eseguire file .exe):
+  👉 Apri direttamente nel browser:  "ik_simulator_v27.html"  (oppure "index.html")
+     - Se vuoi collegare la cartella per salvare su disco, clicca il pulsante
+       "📂 Collega Cartella" nel pannello di sinistra.
+
+------------------------------------------------------------------------
+STRUTTURA DEI FILE:
+------------------------------------------------------------------------
+- DigitalTwin6DOF.exe           -> Server locale nativo Windows (senza percorsi assoluti).
+- ik_simulator_v27.html / index -> Interfaccia web 3D con cinematica e sequencer animazioni.
+- libs/                         -> Librerie Three.js offline (funziona anche SENZA internet).
+- *.stl (8 file)                -> Modelli 3D dei bracci e della base del robot.
+- robot6dof_stl_config.json     -> Mappatura e offset dei pezzi 3D.
+- robot6dof_saved_poses.json    -> Punti e pose statiche salvate.
+- robot6dof_animations.json     -> Gruppi e routine di animazione sequenziate.
+
+========================================================================

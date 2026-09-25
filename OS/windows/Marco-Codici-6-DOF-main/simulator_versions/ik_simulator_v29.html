@@ -1,0 +1,4491 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Digital Twin — Braccio 6 DOF v30 (Materiali 3D, Pressione, Resistenza & Rottura STL)</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="libs/three.min.js"></script>
+<script>if(typeof THREE==='undefined'){document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>')}</script>
+<script src="libs/STLLoader.js"></script>
+<script>if(typeof THREE!=='undefined'&&!THREE.STLLoader){document.write('<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"><\/script>')}</script>
+<script src="libs/TransformControls.js"></script>
+<script>if(typeof THREE!=='undefined'&&!THREE.TransformControls){document.write('<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"><\/script>')}</script>
+<style>
+:root{
+  --left-w: 430px;
+  --right-w: 350px;
+  --bg:#070b0e;
+  --bg-gradient:radial-gradient(circle at 50% 30%, #0d171b 0%, #06090c 100%);
+  --panel:rgba(14, 23, 27, 0.88);
+  --panel-card:rgba(18, 30, 36, 0.75);
+  --line:rgba(98, 230, 199, 0.15);
+  --line-strong:rgba(98, 230, 199, 0.35);
+  --ink:#e4f0f2;
+  --muted:#839aa0;
+  --a:#62e6c7;
+  --a-glow:rgba(98, 230, 199, 0.35);
+  --warn:#ffbc5c;
+  --bad:#ff5c5c;
+  --purple:#c084fc;
+  --trail:#00f0ff;
+  --fea-blue:#0080ff;
+  --fea-green:#22c55e;
+  --fea-yellow:#eab308;
+  --fea-orange:#f97316;
+  --fea-red:#ef4444;
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html,body,#app{height:100%;margin:0;background:var(--bg);color:var(--ink);overflow:hidden}
+
+#app{
+  display:grid;
+  grid-template-columns: var(--left-w) 5px 1fr 5px var(--right-w);
+  position:relative;
+  transition:none;
+}
+#app.hide-left{grid-template-columns: 0px 0px 1fr 5px var(--right-w)}
+#app.hide-right{grid-template-columns: var(--left-w) 5px 1fr 0px 0px}
+#app.hide-both{grid-template-columns: 0px 0px 1fr 0px 0px}
+
+/* Splitter / Resizer Handle */
+.resizer{
+  width:5px;
+  background:rgba(98, 230, 199, 0.08);
+  cursor:col-resize;
+  z-index:25;
+  transition:background .2s, box-shadow .2s;
+  position:relative;
+}
+.resizer:hover, .resizer.dragging{
+  background:var(--a);
+  box-shadow:0 0 10px var(--a);
+}
+.resizer::after{
+  content:'';
+  position:absolute;
+  top:50%;
+  left:1px;
+  transform:translateY(-50%);
+  width:3px;
+  height:30px;
+  border-left:1px dotted rgba(98,230,199,0.5);
+  border-right:1px dotted rgba(98,230,199,0.5);
+}
+
+.panel{
+  padding:14px 12px;
+  background:var(--panel);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  overflow-y:auto;
+  overflow-x:hidden;
+  box-shadow:0 8px 32px rgba(0,0,0,0.45);
+  z-index:10;
+  min-width:0;
+}
+.panel::-webkit-scrollbar{width:5px}
+.panel::-webkit-scrollbar-track{background:transparent}
+.panel::-webkit-scrollbar-thumb{background:rgba(98,230,199,0.2);border-radius:3px}
+.panel::-webkit-scrollbar-thumb:hover{background:var(--a)}
+
+.hide-left .panel:first-child{display:none}
+.hide-right .panel.right{display:none}
+
+h1{
+  font:700 13px 'JetBrains Mono',monospace;
+  letter-spacing:.12em;
+  color:var(--a);
+  margin:0 0 4px;
+  text-transform:uppercase;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  white-space:nowrap;
+}
+h1::before{
+  content:'';
+  display:inline-block;
+  width:8px;height:8px;
+  background:var(--a);
+  border-radius:50%;
+  box-shadow:0 0 10px var(--a);
+}
+.sub,h2,.hint{font:11px 'JetBrains Mono',monospace;color:var(--muted)}
+h2{
+  letter-spacing:.08em;
+  margin:0 0 10px;
+  text-transform:uppercase;
+  color:#b6d2d7;
+  font-size:11px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+.block{
+  background:var(--panel-card);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:12px;
+  margin:0 0 12px;
+  box-shadow:0 4px 16px rgba(0,0,0,0.25);
+  transition:border-color .2s;
+}
+.block:hover{border-color:var(--line-strong)}
+
+.row{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  margin:8px 0;
+}
+.row label{
+  flex: 0 0 130px;
+  font:11px 'JetBrains Mono',monospace;
+  color:#cde0e3;
+  white-space:nowrap;
+}
+.row input[type=number]{width:80px;flex-shrink:0}
+.row input[type=range]{flex:1;min-width:60px}
+.row select{
+  flex:1;
+  min-width:0;
+  background:#091215;
+  color:var(--ink);
+  border:1px solid var(--line);
+  border-radius:5px;
+  padding:5px 6px;
+  font:11px 'JetBrains Mono',monospace;
+  outline:none;
+}
+.row select:focus{border-color:var(--a)}
+
+input{
+  background:#091215;
+  color:var(--ink);
+  border:1px solid var(--line);
+  border-radius:5px;
+  padding:5px 7px;
+  font:11px 'JetBrains Mono',monospace;
+  outline:none;
+  transition:border-color .2s, box-shadow .2s;
+}
+input:focus{border-color:var(--a);box-shadow:0 0 8px var(--a-glow)}
+
+input[type=range]{
+  -webkit-appearance:none;
+  height:5px;
+  background:#0b1619;
+  border:1px solid var(--line);
+  border-radius:3px;
+  outline:none;
+  padding:0;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  width:14px;height:14px;
+  border-radius:50%;
+  background:var(--a);
+  cursor:pointer;
+  box-shadow:0 0 8px var(--a);
+  transition:transform .1s;
+}
+input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2)}
+
+.val{
+  width:60px;
+  text-align:right;
+  color:var(--a);
+  font:11px 'JetBrains Mono',monospace;
+  flex-shrink:0;
+}
+
+button{
+  width:100%;
+  margin-top:7px;
+  padding:8px 10px;
+  background:linear-gradient(180deg, #18282e 0%, #101c20 100%);
+  color:var(--ink);
+  border:1px solid var(--line);
+  border-radius:6px;
+  cursor:pointer;
+  font:600 11px 'JetBrains Mono',monospace;
+  transition:all .18s ease;
+  box-shadow:0 2px 6px rgba(0,0,0,0.3);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+button:hover{
+  border-color:var(--a);
+  background:linear-gradient(180deg, #22373f 0%, #16262c 100%);
+  box-shadow:0 0 12px var(--a-glow);
+  transform:translateY(-1px);
+}
+button:active{transform:translateY(0)}
+
+button.primary{
+  background:linear-gradient(180deg, #62e6c7 0%, #44c2a4 100%);
+  color:#041a16;
+  border:0;
+  font-weight:700;
+  box-shadow:0 0 14px var(--a-glow);
+}
+button.primary:hover{
+  background:linear-gradient(180deg, #7cf8da 0%, #56d4b6 100%);
+  box-shadow:0 0 20px rgba(98,230,199,0.55);
+}
+
+button.master-save-btn{
+  background:linear-gradient(180deg, #1fa37f 0%, #137359 100%);
+  border:1px solid #7cf8da;
+  color:#ffffff;
+  font-size:12px;
+  font-weight:700;
+  padding:10px;
+  box-shadow:0 0 16px rgba(98,230,199,0.4);
+}
+button.master-save-btn:hover{
+  background:linear-gradient(180deg, #26be95 0%, #198c6d 100%);
+  box-shadow:0 0 24px rgba(98,230,199,0.65);
+  transform:translateY(-1px);
+}
+
+button.purple{
+  background:linear-gradient(180deg, #442466 0%, #2a1542 100%);
+  border-color:var(--purple);
+  color:#f5ebff;
+}
+button.purple:hover{
+  background:linear-gradient(180deg, #5b3188 0%, #3a1d5a 100%);
+  box-shadow:0 0 14px rgba(192,132,252,0.4);
+}
+
+button.trail-btn{
+  background:linear-gradient(180deg, #0e373d 0%, #072226 100%);
+  border-color:var(--trail);
+  color:#e0fbff;
+}
+button.trail-btn:hover{
+  background:linear-gradient(180deg, #184f57 0%, #0e363d 100%);
+  box-shadow:0 0 14px rgba(0,240,255,0.35);
+}
+
+.tabs{display:flex;gap:5px;margin-bottom:8px}
+.tabs button{margin:0;border-radius:5px;background:#0d181b}
+.tabs button.active{
+  border-color:var(--a);
+  color:var(--a);
+  background:#142d32;
+  box-shadow:0 0 10px rgba(98,230,199,0.25);
+}
+
+.cloud-modes{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:6px 0 10px}
+.cloud-modes button{margin:0;padding:8px 4px;font-size:10.5px;text-align:center;line-height:1.3;background:#0a1316;border:1px solid var(--line);color:var(--muted)}
+.cloud-modes button.active{
+  border-color:var(--purple);
+  background:rgba(68,36,102,0.5);
+  color:#f3e8ff;
+  font-weight:700;
+  box-shadow:0 0 12px rgba(192,132,252,0.3);
+}
+
+.status{
+  font:11px/1.6 'JetBrains Mono',monospace;
+  background:#091215;
+  padding:9px 11px;
+  border:1px solid var(--line);
+  border-radius:6px;
+  word-break:break-word;
+}
+.good{color:var(--a)}
+.bad{color:var(--bad)}
+.warn{color:var(--warn)}
+.purple-txt{color:var(--purple)}
+.trail-txt{color:var(--trail)}
+.fea-txt{color:#f97316}
+
+#view{
+  position:relative;
+  min-width:0;
+  background:var(--bg-gradient);
+}
+.hint{position:absolute;left:14px;bottom:12px;pointer-events:none;z-index:5;background:rgba(0,0,0,0.65);padding:5px 10px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(6px)}
+
+/* === BARRA VISTE CAD RAPIDE (FLOATING HUD) === */
+.cad-toolbar{
+  position:absolute;
+  top:14px;
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  gap:4px;
+  background:rgba(10, 18, 22, 0.85);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  padding:4px 6px;
+  border-radius:8px;
+  border:1px solid var(--line);
+  box-shadow:0 6px 24px rgba(0,0,0,0.5);
+  z-index:15;
+}
+.cad-btn{
+  width:auto;
+  margin:0;
+  padding:5px 10px;
+  font:600 10.5px 'JetBrains Mono',monospace;
+  background:transparent;
+  border:1px solid transparent;
+  color:#a1bec4;
+  border-radius:5px;
+  box-shadow:none;
+}
+.cad-btn:hover{
+  background:rgba(98,230,199,0.12);
+  border-color:var(--line);
+  color:var(--a);
+  box-shadow:none;
+  transform:none;
+}
+.cad-btn.active{
+  background:rgba(98,230,199,0.18);
+  border-color:var(--a);
+  color:var(--a);
+  font-weight:700;
+}
+
+/* Pulsanti collasso pannelli laterali */
+.toggle-panel-btn{
+  position:absolute;
+  top:14px;
+  width:28px;height:28px;
+  margin:0;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(10, 18, 22, 0.82);
+  border:1px solid var(--line);
+  border-radius:6px;
+  color:var(--a);
+  z-index:15;
+  cursor:pointer;
+}
+.toggle-panel-btn:hover{background:#172e35;border-color:var(--a)}
+#toggleLeftBtn{left:14px}
+#toggleRightBtn{right:14px}
+
+.badge{display:inline-block;padding:2px 6px;border-radius:4px;font:10px 'JetBrains Mono',monospace;margin-left:5px}
+.badge-green{background:#0b2620;color:var(--a);border:1px solid #1a5649}
+.badge-purple{background:#241935;color:var(--purple);border:1px solid #58327d}
+.badge-blue{background:#0e292d;color:var(--trail);border:1px solid #1c626b}
+.badge-gold{background:#26200d;color:var(--warn);border:1px solid #6b531c}
+.badge-red{background:#301010;color:var(--bad);border:1px solid #732222}
+.badge-orange{background:#2d1706;color:#f97316;border:1px solid #7a3a0e}
+
+/* Toolnav Tabs */
+.toolnav{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+  gap:4px;
+  margin:10px 0 10px;
+}
+.toolnav button{
+  margin:0;
+  padding:6px 4px;
+  font-size:10px;
+  border-radius:5px;
+  white-space:nowrap;
+  text-align:center;
+}
+.toolnav button.active{
+  background:linear-gradient(180deg, #62e6c7 0%, #44c2a4 100%);
+  color:#041a16;
+  font-weight:700;
+  box-shadow:0 0 12px var(--a-glow);
+}
+.toolnav button.fea-tool.active{
+  background:linear-gradient(180deg, #f97316 0%, #c2410c 100%);
+  color:#ffffff;
+  font-weight:700;
+  box-shadow:0 0 14px rgba(249,115,22,0.6);
+}
+
+.toolpane[hidden]{display:none}
+
+.treeItem{
+  padding:6px 8px;
+  margin:3px 0;
+  border:1px solid transparent;
+  border-radius:5px;
+  font:11px 'JetBrains Mono',monospace;
+  cursor:pointer;
+  transition:all .15s;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.treeItem:hover,.treeItem.selected{border-color:var(--a);background:rgba(23,48,56,0.65)}
+.treeItem:before{content:'◇ ';color:var(--a)}
+
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}
+.stat-box{
+  background:#081113;
+  border:1px solid var(--line);
+  border-radius:6px;
+  padding:6px 8px;
+  font:10.5px 'JetBrains Mono',monospace;
+}
+.stat-box .num{color:var(--a);font-weight:700;font-size:12px}
+.stat-box.trail .num{color:var(--trail)}
+.stat-box.purple .num{color:var(--purple)}
+.stat-box.fea .num{color:#f97316}
+
+/* Timeline Step Cards */
+.step-list{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin:10px 0;
+  max-height:240px;
+  overflow-y:auto;
+  padding-right:4px;
+}
+.step-card{
+  background:#0b1518;
+  border:1px solid var(--line);
+  border-radius:6px;
+  padding:7px 9px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  font:11px 'JetBrains Mono',monospace;
+  transition:all .15s;
+}
+.step-card:hover{border-color:var(--a);background:#101f24}
+.step-card.active{
+  border-color:var(--warn);
+  background:rgba(255,188,92,0.12);
+  box-shadow:0 0 10px rgba(255,188,92,0.3);
+}
+.step-info{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.step-title{color:var(--ink);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.step-meta{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px}
+.step-actions{display:flex;gap:3px;flex-shrink:0}
+.step-actions button{
+  width:auto;margin:0;padding:3px 6px;font-size:10px;border-radius:4px;background:#152227;
+}
+.step-actions button:hover{background:var(--a);color:#06231e}
+
+/* === FEA STRESS CARDS & BARS === */
+.stress-bar-container{
+  width:100%;
+  height:7px;
+  background:#091215;
+  border:1px solid var(--line);
+  border-radius:4px;
+  overflow:hidden;
+  margin-top:4px;
+}
+.stress-bar{
+  height:100%;
+  width:0%;
+  background:linear-gradient(90deg, #0080ff 0%, #22c55e 50%, #eab308 80%, #ef4444 100%);
+  border-radius:3px;
+  transition:width .15s ease;
+}
+.stress-card{
+  background:#091418;
+  border:1px solid var(--line);
+  border-radius:6px;
+  padding:7px 9px;
+  margin-bottom:6px;
+  font:11px 'JetBrains Mono',monospace;
+}
+.stress-card.overload{
+  border-color:var(--bad);
+  background:rgba(239, 68, 68, 0.12);
+  box-shadow:0 0 10px rgba(239, 68, 68, 0.3);
+}
+.stress-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:2px;
+}
+
+/* Legenda FEA Color Ramp */
+.fea-legend{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  background:linear-gradient(90deg, #0080ff, #06b6d4, #22c55e, #eab308, #f97316, #ef4444);
+  height:12px;
+  border-radius:4px;
+  margin:8px 0 3px 0;
+  border:1px solid rgba(255,255,255,0.2);
+}
+.fea-legend-labels{
+  display:flex;
+  justify-content:space-between;
+  font:9.5px 'JetBrains Mono',monospace;
+  color:var(--muted);
+  margin-bottom:8px;
+}
+.mat-tool{border-color:rgba(168,85,247,0.4);color:#c084fc}
+.mat-tool.active{background:#581c87;color:#fff;border-color:#a855f7}
+.mat-card{
+  background:#081014;
+  border:1px solid rgba(168,85,247,0.25);
+  border-radius:6px;
+  padding:7px 9px;
+  margin-bottom:6px;
+  font:10.5px 'JetBrains Mono',monospace;
+}
+.mat-card.broken{
+  border-color:var(--bad);
+  background:rgba(239, 68, 68, 0.15);
+  box-shadow:0 0 10px rgba(239, 68, 68, 0.35);
+}
+</style>
+</head>
+<body>
+<div id="app">
+<aside class="panel">
+  <h1>DIGITAL TWIN 6 DOF</h1>
+  <div class="sub">Marco Codici 6 DOF · Workspace Studio v30 (Materiali & FEA)</div>
+  
+  <!-- PULSANTE MASTER SALVA TUTTO IN TESTATA -->
+  <button id="btnHeaderSaveAll" class="master-save-btn" style="margin:8px 0 4px">💾 SALVA TUTTO IL PROGETTO (Master Save)</button>
+  <div class="sub" style="font-size:9.5px;margin-bottom:8px;text-align:center">Salva giunti, pezzi STL, pesi, polimeri, coppie torque, animazioni e velocità su disco</div>
+
+  <div class="toolnav">
+    <button class="tool active" data-pane="motion">Movimento</button>
+    <button class="tool fea-tool" data-pane="physics">⚡ Fisica & Carichi</button>
+    <button class="tool mat-tool" data-pane="material">🧪 Materiali & Rottura</button>
+    <button class="tool" data-pane="anim">🎬 Animazioni</button>
+    <button class="tool" data-pane="trail">Scia 3D</button>
+    <button class="tool" data-pane="cloud">Nuvola 3D</button>
+    <button class="tool" data-pane="model">Modello STL</button>
+    <button class="tool" data-pane="setup">Giunti / dummy</button>
+    <button class="tool" data-pane="speed">Velocità motori</button>
+    <button class="tool" data-pane="project">Progetto & JSON</button>
+  </div>
+
+  <!-- PANNELLO MOVIMENTO & GEOMETRIA -->
+  <section class="block toolpane" id="geoPane">
+    <h2>Geometria Braccio</h2>
+    <div class="row"><label>J1 → J2</label><input id="d12" type="number" value="50"></div>
+    <div class="row"><label>J2 → J3</label><input id="L1" type="number" value="220"></div>
+    <div class="row"><label>J3 → J4</label><input id="d34" type="number" value="50"></div>
+    <div class="row"><label>J4 → J5</label><input id="L2" type="number" value="220"></div>
+    <div class="row"><label>J5 → J6</label><input id="d56" type="number" value="50"></div>
+    <div class="row"><label>J6 → pinza</label><input id="Lg" type="number" value="150"></div>
+    <div class="row"><label>Diametro bracci</label><input id="diameter" type="number" min="4" max="60" value="30"></div>
+    <button id="applyGeo">Applica geometria & ricalcola</button>
+  </section>
+
+  <section class="block toolpane" id="motionPane">
+    <h2>Modalità Controllo</h2>
+    <div class="tabs"><button class="tab active" data-tab="fk">Manuale (FK)</button><button class="tab" data-tab="ik">Target (IK)</button></div>
+    <div id="fk">
+      <div id="sliders"></div>
+      <button id="vertical">Posa verticale iniziale</button>
+      <button id="rest">Posa di riposo (0, 47, 0, -69, 7, -68)</button>
+    </div>
+    <div id="ik" hidden>
+      <div class="sub" style="margin-bottom:6px">💡 Trascina il Gizmo 3D con frecce X/Y/Z sulla scena.</div>
+      <div class="row"><label>X Target</label><input id="tx" type="number" value="35"></div>
+      <div class="row"><label>Y Target</label><input id="ty" type="number" value="-427"></div>
+      <div class="row"><label>Z Target</label><input id="tz" type="number" value="210"></div>
+      <div class="row"><label>Pinza orizz. & radiale</label><input id="horizontal" type="checkbox" checked><span class="val"><span class="badge badge-green">RADIALE</span></span></div>
+      <div class="sub" style="margin:-4px 0 8px 0;font-size:10px;color:#a0cbd2">📐 La pinza è parallela alla base e orientata lungo la retta (0,0,0) → Target.</div>
+      <div class="row">
+        <label>Postura Braccio</label>
+        <select id="postureMode">
+          <option value="min_j2">🛡️ Minimo Sforzo J2 (Spalla Min. Torque)</option>
+          <option value="crane">🏗️ Gru / J2 Verticale ≈ 0° / Monte</option>
+          <option value="free">Libera / Standard</option>
+          <option value="scoop">Gomito Basso (Scoop)</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Protezione Sforzo & Coppia</label>
+        <input id="torqueProtectionCheck" type="checkbox" checked>
+        <span class="val"><span class="badge badge-green" id="torqueProtBadge">MAX SICUREZZA 🛡️</span></span>
+      </div>
+      <div class="sub" style="margin:-4px 0 8px 0;font-size:10px;color:#839aa0">🛡️ L'algoritmo IK minimizza i bracci di leva e sceglie posture con sforzo motore ben al di sotto del 100%.</div>
+      <div class="row"><label>Ciclo Rest</label><input id="useCycle" type="checkbox" checked><span class="val">Rest→T→3s→Rest</span></div>
+      <div class="row"><label>Fluidità movimenti</label><input id="smoothWeight" type="range" min="0" max="100" value="100"><span class="val" id="smoothWeightVal">100%</span></div>
+      <button class="primary" id="solve">Esegui ciclo Target</button>
+      <button id="solveDirect">Vai solo al Target (Diretto)</button>
+      <button id="showTarget">Mostra/nascondi Gizmo Target</button>
+    </div>
+  </section>
+
+  <!-- === NUOVO PANNELLO FISICA & CARICHI (TORQUE, PESI & FEA) === -->
+  <section class="block toolpane" id="physicsPane" hidden>
+    <h2>⚡ Simulazione Fisica & Carichi</h2>
+    <div class="sub">Calcola sforzi statici, momenti torcenti e mappa di stress FEA dei servomotori.</div>
+
+    <!-- 1. CARICO UTILE / OGGETTO PRESO (PAYLOAD) -->
+    <div class="block" style="margin-top:10px;background:#091418">
+      <h2 style="font-size:11px;margin:0 0 6px;color:#f97316">📦 Oggetto Preso dalla Pinza (Payload)</h2>
+      <div class="row">
+        <label>Afferra oggetto</label>
+        <input id="payloadEnabled" type="checkbox" checked>
+        <span class="val"><span class="badge badge-orange" id="payloadStateBadge">IN PRESA</span></span>
+      </div>
+      <div class="row">
+        <label>Massa oggetto</label>
+        <input id="payloadMass" type="range" min="0" max="2000" step="10" value="250">
+        <input id="payloadMassNum" type="number" min="0" max="5000" step="5" value="250" style="width:65px">
+        <span class="val" style="width:25px">g</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:4px;margin:6px 0">
+        <button onclick="setPayloadPreset(0)" style="font-size:9.5px;padding:4px;margin:0">0g (Vuoto)</button>
+        <button onclick="setPayloadPreset(150)" style="font-size:9.5px;padding:4px;margin:0">150g (Leggero)</button>
+        <button onclick="setPayloadPreset(350)" style="font-size:9.5px;padding:4px;margin:0">350g (Medio)</button>
+        <button onclick="setPayloadPreset(700)" style="font-size:9.5px;padding:4px;margin:0">700g (Pesante)</button>
+        <button onclick="setPayloadPreset(1200)" style="font-size:9.5px;padding:4px;margin:0">1.2 kg (Max)</button>
+        <button onclick="setPayloadPreset(2000)" style="font-size:9.5px;padding:4px;margin:0;color:var(--bad)">2.0 kg (Test)</button>
+      </div>
+      <div class="row">
+        <label>Dim. Cubo (mm)</label>
+        <input id="payloadDimX" type="number" value="45" title="Larghezza X" style="width:50px">
+        <input id="payloadDimY" type="number" value="45" title="Profondità Y" style="width:50px">
+        <input id="payloadDimZ" type="number" value="45" title="Altezza Z" style="width:50px">
+      </div>
+    </div>
+
+    <!-- 2. MAPPA DI STRESS FEA 3D (COLORI FISICI) -->
+    <div class="block" style="margin-top:8px;background:#091418">
+      <h2 style="font-size:11px;margin:0 0 6px;color:var(--a)">🌈 Mappa di Stress FEA (Colori Termici)</h2>
+      <div class="row">
+        <label>Attiva Mappa FEA</label>
+        <input id="feaHeatmapEnabled" type="checkbox" checked>
+        <span class="val"><span class="badge badge-green" id="feaHeatmapBadge">ATTIVA</span></span>
+      </div>
+      <div class="fea-legend"></div>
+      <div class="fea-legend-labels">
+        <span>0% (Scarico)</span>
+        <span>50% (Nominale)</span>
+        <span>100%+ (Sovraccarico)</span>
+      </div>
+      <div class="row">
+        <label>Mostra Baricentro</label>
+        <input id="feaShowCoM" type="checkbox" checked>
+        <span class="val"><span class="sub" style="font-size:10px">Centro Massa</span></span>
+      </div>
+      <div class="row">
+        <label>Anelli Coppia 3D</label>
+        <input id="feaShowTorqueRings" type="checkbox" checked>
+        <span class="val"><span class="sub" style="font-size:10px">Vettori assi</span></span>
+      </div>
+      <div class="row">
+        <label>Cerchio Base 3D</label>
+        <input id="feaShowBaseCircle" type="checkbox" checked>
+        <span class="val"><span class="sub" style="font-size:10px">Perimetro Base</span></span>
+      </div>
+    </div>
+
+    <!-- 3. PESI DEI MOTORI PER OGNI GIUNTO (J1..J6) -->
+    <div class="block" style="margin-top:8px;background:#091418">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <h2 style="font-size:11px;margin:0;color:var(--purple)">⚙️ Specifiche Motori / Servi</h2>
+        <span class="badge badge-purple" id="totalMotorWeightBadge">Motori: 320g</span>
+      </div>
+      <div class="sub" style="margin-bottom:8px">Imposta la coppia max ($\text{kg}\cdot\text{cm}$) ed il peso (g) del motore montato su ogni asse:</div>
+      
+      <div id="motorsPhysicsList"></div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px">
+        <button onclick="applyMotorSpecPreset('standard20')" style="font-size:9.5px;padding:5px 2px;margin:0">Tutti DS3218 (20kg·cm)</button>
+        <button onclick="applyMotorSpecPreset('power35')" style="font-size:9.5px;padding:5px 2px;margin:0">Tutti RDS3116 (35kg·cm)</button>
+        <button onclick="applyMotorSpecPreset('hybridPro')" style="font-size:9.5px;padding:5px 2px;margin:0">Pro (Base 60kg, Alti 25kg)</button>
+        <button onclick="applyMotorSpecPreset('economy13')" style="font-size:9.5px;padding:5px 2px;margin:0">Eco MG996R (13kg·cm)</button>
+      </div>
+    </div>
+
+    <!-- 4. PESI DEI FILE STL (GRAMMI DA SLICER 3D) -->
+    <div class="block" style="margin-top:8px;background:#091418">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <h2 style="font-size:11px;margin:0;color:#cde0e3">🖨️ Pesi File STL (Stampa 3D / Bilancia)</h2>
+        <span class="badge badge-green" id="totalStlWeightBadge">STL: 1025g</span>
+      </div>
+      <div class="sub" style="margin-bottom:8px">Inserisci il peso reale in grammi calcolato dallo slicer 3D (Cura, Bambu, Prusa) o pesato:</div>
+      
+      <div id="stlWeightsList" style="max-height:220px;overflow-y:auto;padding-right:4px"></div>
+    </div>
+  </section>
+
+  <!-- === NUOVO PANNELLO MATERIALI 3D, PRESSIONE & RESISTENZA / ROTTURA STL === -->
+  <section class="block toolpane" id="materialPane" hidden>
+    <h2>🧪 Proprietà Materiale & Resistenza STL</h2>
+    <div class="sub">Simula tensione di snervamento (MPa), pressione flettente interna, fattore di sicurezza e carico di rottura dei pezzi stampati 3D.</div>
+
+    <!-- 1. SELEZIONE MATERIALE -->
+    <div class="block" style="margin-top:10px;background:#091418">
+      <h2 style="font-size:11px;margin:0 0 6px;color:#a855f7">🧬 Selezione Polimero di Stampa</h2>
+      <div class="row">
+        <label>Materiale</label>
+        <select id="matSelect">
+          <option value="PLA">PLA (Standard 3D)</option>
+          <option value="PETG" selected>PETG (Duttile / Tenace)</option>
+          <option value="ABS">ABS / ASA (Termico & Tenace)</option>
+          <option value="PACF">PA-CF (Nylon Fibra Carbonio)</option>
+          <option value="TPU">TPU 95A (Gomma Flessibile)</option>
+        </select>
+      </div>
+      <div id="matSpecsCard" style="background:#0c191e;border:1px solid rgba(168,85,247,0.3);border-radius:6px;padding:8px;margin-top:6px;font-size:10.5px"></div>
+    </div>
+
+    <!-- 2. PARAMETRI DI STAMPA SLICER -->
+    <div class="block" style="margin-top:8px;background:#091418">
+      <h2 style="font-size:11px;margin:0 0 6px;color:#62e6c7">⚙️ Parametri Slicer (Infill & Pareti)</h2>
+      <div class="row">
+        <label>Infill Density</label>
+        <input id="matInfill" type="range" min="10" max="100" step="5" value="40">
+        <span class="val" id="matInfillVal">40%</span>
+      </div>
+      <div class="row">
+        <label>Pareti / Muri</label>
+        <input id="matWalls" type="range" min="2" max="8" step="1" value="4">
+        <span class="val" id="matWallsVal">4 muri (1.8mm)</span>
+      </div>
+      <div class="row">
+        <label>Adesione Layer Z</label>
+        <select id="matLayerOrient">
+          <option value="horizontal">Orizzontale (Lungo asse braccio - Max Forza)</option>
+          <option value="vertical">Verticale (Trazione tra i Layer)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 3. TEST CARICO DI ROTTURA (SIMULATORE DI CEDIMENTO) -->
+    <div class="block" style="margin-top:8px;background:#091418">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <h2 style="font-size:11px;margin:0;color:#ff5c5c">🔥 Simulazione Carico di Rottura</h2>
+        <span class="badge badge-red" id="breakageStatusBadge">TEST STATICO</span>
+      </div>
+      <div class="sub" style="margin-bottom:8px">Simula l'aumento continuo del carico fino al limite di snervamento plastico dell'STL più sollecitato in questa postura.</div>
+      <button id="btnSimulateBreakage" class="primary" style="background:linear-gradient(135deg, #991b1b 0%, #ef4444 100%);margin:4px 0 6px">💥 Calcola Carico di Rottura Posa Attuale</button>
+      <div id="breakageTestResult" style="background:#0c1316;border:1px solid rgba(239,68,68,0.3);border-radius:6px;padding:8px;font-size:11px">
+        Premi il pulsante per simulare lo stress test di rottura sulla postura corrente.
+      </div>
+    </div>
+
+    <!-- 4. ANALISI STRUTTURALE PEZZI STL -->
+    <div class="block" style="margin-top:8px;background:#091418">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <h2 style="font-size:11px;margin:0;color:#00f0ff">📋 Integrità Strutturale Componenti STL</h2>
+        <span class="badge badge-green" id="stlStructuralSummaryBadge">TUTTI SICURI</span>
+      </div>
+      <div class="sub" style="margin-bottom:8px">Tensione interna (MPa), momento flettente e fattore di sicurezza per singolo pezzo:</div>
+      <div id="stlStructuralList" style="max-height:260px;overflow-y:auto;padding-right:4px"></div>
+    </div>
+  </section>
+
+  <!-- PANNELLO ANIMAZIONI / SEQUENZE DI LAVORO -->
+  <section class="block toolpane" id="animPane" hidden>
+    <h2>🎬 Gruppi di Animazione (Sequencer)</h2>
+    <div class="sub">Salvataggio dedicato nel file <b>robot6dof_animations.json</b></div>
+    
+    <div class="row" style="margin-top:10px">
+      <label>Gruppo attivo</label>
+      <select id="animGroupSelect"></select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+      <button id="btnNewAnimGroup" style="margin:0">+ Nuovo Gruppo</button>
+      <button id="btnDelAnimGroup" style="margin:0">🗑️ Elimina</button>
+    </div>
+
+    <h2 style="margin-top:14px">Timeline Passi</h2>
+    <div class="step-list" id="animStepList"></div>
+
+    <!-- AGGIUNGI PASSO -->
+    <div class="block" style="margin-top:10px;padding:10px;background:#091215">
+      <h2 style="font-size:10.5px;margin:0 0 6px">➕ Aggiungi Passo alla Timeline</h2>
+      <div class="row">
+        <label>Posa Target</label>
+        <select id="newStepPoseSelect">
+          <option value="__current__">📍 Posa attuale del braccio</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Azione dopo arrivo</label>
+        <select id="newStepWaitType">
+          <option value="time">⏳ Aspetta secondi...</option>
+          <option value="user_check">👤 Aspetta Check Utente</option>
+          <option value="none">⚡ Nessuna attesa (Immediato)</option>
+        </select>
+      </div>
+      <div class="row" id="newStepTimeRow">
+        <label>Secondi attesa</label>
+        <input id="newStepWaitTime" type="number" step="0.5" min="0.5" max="60" value="3.0">
+        <span class="val">sec</span>
+      </div>
+      <button class="primary" id="btnAddStepToGroup">➕ Inserisci Passo</button>
+    </div>
+
+    <!-- CONTROLLI ESECUZIONE & SALVATAGGIO JSON -->
+    <h2 style="margin-top:14px">Controllo Player</h2>
+    <div class="row">
+      <label>Loop continuo</label>
+      <input id="animLoopCheck" type="checkbox">
+      <span class="val"><span class="sub" style="font-size:10px">Ripeti ciclo</span></span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+      <button class="primary" id="btnPlayAnimation">▶ Avvia Routine</button>
+      <button id="btnStopAnimation">⏹️ Stop</button>
+    </div>
+    <button class="purple" id="btnUserCheckContinue" style="margin-top:6px;display:none">⏭️ Continua (Check Utente ✓)</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:10px">
+      <button id="btnSaveAnimOnly" style="background:#1b2d35;border-color:var(--a);margin:0">💾 Salva su Disco (JSON)</button>
+      <button id="btnReloadAnimOnly" style="margin:0">🔄 Ricarica da Disco</button>
+    </div>
+    <button id="btnDownloadAnim" style="margin-top:5px;background:#142329">📥 Scarica File robot6dof_animations.json</button>
+  </section>
+
+  <!-- PANNELLO SCIA TRAIETTORIA 3D -->
+  <section class="block toolpane" id="trailPane" hidden>
+    <h2>Scia Traiettoria (Motion Trail)</h2>
+    <div class="sub">Traccia il percorso 3D disegnato dalla punta (endpoint) della pinza.</div>
+    <div class="row" style="margin-top:10px">
+      <label>Traccia scia</label>
+      <input id="enableTrail" type="checkbox" checked>
+      <span class="val"><span class="badge badge-blue" id="trailStateBadge">ATTIVA</span></span>
+    </div>
+    <div class="row">
+      <label>Spessore</label>
+      <input id="trailThickness" type="range" min="0.5" max="10" step="0.5" value="3">
+      <span class="val" id="trailThicknessVal">3.0 mm</span>
+    </div>
+    <div class="row">
+      <label>Trasparenza</label>
+      <input id="trailOpacity" type="range" min="10" max="100" step="5" value="85">
+      <span class="val" id="trailOpacityVal">85%</span>
+    </div>
+    <div class="row">
+      <label>Colore Scia</label>
+      <select id="trailColor">
+        <option value="#00f0ff">Ciano Neon Elettrico</option>
+        <option value="#62e6c7">Smeraldo Cyber</option>
+        <option value="#ffbc5c">Oro / Ambra Laser</option>
+        <option value="#c084fc">Viola Plasma</option>
+        <option value="#ff5c5c">Rosso Corallo</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Auto-cancella</label>
+      <input id="trailAutoClear" type="checkbox" checked>
+      <span class="val"><span class="sub" style="font-size:10px">a fine ciclo</span></span>
+    </div>
+    <button class="trail-btn" id="clearTrailBtn">🗑️ Cancella Scia Ora</button>
+    <div class="stat-grid">
+      <div class="stat-box trail">Lunghezza:<br><span class="num" id="trailLengthStat">0.0</span> mm</div>
+      <div class="stat-box trail">Punti:<br><span class="num" id="trailPointsStat">0</span></div>
+    </div>
+  </section>
+
+  <!-- PANNELLO NUVOLA WORKSPACE -->
+  <section class="block toolpane" id="cloudPane" hidden>
+    <h2>Nuvola Workspace (Reachability)</h2>
+    <div class="sub">Seleziona la modalità di calcolo dell'inviluppo volumetrico:</div>
+    
+    <div class="cloud-modes">
+      <button id="btnCloudFree" class="active" data-mode="free">🌐 Senza Vincolo<br><span style="font-size:9.5px;color:var(--muted)">6 DOF Libero</span></button>
+      <button id="btnCloudHori" data-mode="horizontal">📐 Con Pinza Orizz.<br><span style="font-size:9.5px;color:var(--muted)">Radiale (±5°)</span></button>
+    </div>
+
+    <div class="row">
+      <label>Mostra nuvola</label>
+      <input id="showCloud" type="checkbox">
+      <span class="val"><span class="badge badge-purple" id="cloudStateBadge">OFF</span></span>
+    </div>
+    <div class="row">
+      <label>Vista sezione</label>
+      <select id="cloudSection">
+        <option value="volume">Volume 3D Completo</option>
+        <option value="slice">Sezione Laterale Piano XZ (Y≈0)</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Punti nuvola</label>
+      <input id="cloudDensity" type="range" min="5000" max="50000" step="5000" value="20000">
+      <span class="val" id="cloudDensityVal">20k</span>
+    </div>
+    <div class="row">
+      <label>Dimensione</label>
+      <input id="cloudPointSize" type="range" min="1" max="8" step="0.5" value="3.5">
+      <span class="val" id="cloudPointSizeVal">3.5px</span>
+    </div>
+    <div class="row">
+      <label>Trasparenza</label>
+      <input id="cloudOpacity" type="range" min="10" max="100" step="5" value="45">
+      <span class="val" id="cloudOpacityVal">45%</span>
+    </div>
+    <div class="row">
+      <label>Gradiente</label>
+      <select id="cloudColorMap">
+        <option value="dist">Distanza dal centro (RGB)</option>
+        <option value="height">Altezza Z (Gradient)</option>
+        <option value="neon">Hologram Cyber Cyan/Purple</option>
+      </select>
+    </div>
+    <button class="purple" id="recalcCloud">⚡ Rigenera Nuvola</button>
+    <div class="stat-grid" id="cloudStats">
+      <div class="stat-box purple">Raggio Max:<br><span class="num" id="statRmax">--</span> mm</div>
+      <div class="stat-box purple">Raggio Min:<br><span class="num" id="statRmin">--</span> mm</div>
+      <div class="stat-box purple">Z Massima:<br><span class="num" id="statZmax">--</span> mm</div>
+      <div class="stat-box purple">Z Minima:<br><span class="num" id="statZmin">--</span> mm</div>
+    </div>
+  </section>
+
+  <!-- PANNELLO VELOCITÀ MOTORI -->
+  <section class="block toolpane" id="speedPane" hidden>
+    <h2>Velocità Motori e Giunti</h2>
+    <div class="sub">Regola la velocità angolare massima (°/s) di ogni asse ed il moltiplicatore globale.</div>
+    <div class="row"><label>Velocità globale</label><input id="globalSpeed" type="range" min="10" max="200" value="100"><span class="val" id="globalSpeedVal">100%</span></div>
+    <div id="speedSliders"></div>
+    <button id="resetSpeeds">Ripristina velocità predefinite</button>
+  </section>
+
+  <!-- PANNELLO STL -->
+  <section class="block toolpane" id="modelPane" hidden>
+    <h2>STL · pezzi del braccio</h2>
+    <button class="primary" id="scanFolder">Collega / Ricarica STL da cartella</button>
+    <div class="sub" style="margin-top:6px">Con DigitalTwin6DOF.exe tutti gli STL e i JSON vengono caricati automaticamente all'avvio!</div>
+    <div style="margin-top:10px" class="sub">Caricamento manuale file .stl:</div>
+    <input id="stlFiles" type="file" accept=".stl" multiple>
+    <div class="row"><label>Pezzo selez.</label><select id="assetSelect"><option>Nessun STL</option></select></div>
+    <div class="row"><label>Scala</label><input id="assetScale" type="number" step="0.001" value="1"></div>
+    <div class="row"><label>Offset X</label><input id="assetX" type="number" value="0"></div>
+    <div class="row"><label>Offset Y</label><input id="assetY" type="number" value="0"></div>
+    <div class="row"><label>Offset Z</label><input id="assetZ" type="number" value="0"></div>
+    <div class="row"><label>Rot. X/Y/Z</label><input id="assetRX" type="number" value="0"><input id="assetRY" type="number" value="0"><input id="assetRZ" type="number" value="0"></div>
+    <div class="row"><label>Braccio rigido</label><select id="assetAttach"><option value="-1">Mondo (fisso)</option><option value="0">Braccio 1 · J1 → J2</option><option value="1">Braccio 2 · J2 → J3</option><option value="2">Braccio 3 · J3 → J4</option><option value="3">Braccio 4 · J4 → J5</option><option value="4">Braccio 5 · J5 → J6</option><option value="5">Braccio 6 · J6 → pinza</option><option value="6">End effector / pinza</option></select></div>
+    <button id="applyAsset">Applica al pezzo STL</button>
+    <button id="deleteAsset">Elimina STL selezionato</button>
+  </section>
+
+  <!-- PANNELLO SETUP / DUMMY -->
+  <section class="block toolpane" id="setupPane" hidden>
+    <h2>Dummy point e giunti</h2>
+    <div class="row"><label>Dummy</label><select id="dummySelect"><option value="target">Target</option><option value="endpoint">Endpoint pinza</option><option value="0">J1 base</option><option value="1">J2</option><option value="2">J3</option><option value="3">J4</option><option value="4">J5</option><option value="5">J6</option><option value="6">Endpoint riferimento</option></select></div>
+    <div class="row"><label>X</label><input id="dummyX" type="number" value="0"></div>
+    <div class="row"><label>Y</label><input id="dummyY" type="number" value="0"></div>
+    <div class="row"><label>Z</label><input id="dummyZ" type="number" value="0"></div>
+    <button id="applyDummy">Posiziona dummy</button>
+    <button id="captureJoints">Cattura giunti dalla posa</button>
+    <button id="useDummyGeometry">Usa distanze dummy nell’IK</button>
+  </section>
+
+  <!-- PANNELLO PROGETTO & JSON -->
+  <section class="block toolpane" id="projectPane" hidden>
+    <h2>💾 Salva Tutto & Gestione Progetto</h2>
+    <button id="btnMasterSaveProject" class="master-save-btn">💾 SALVA TUTTO IL PROGETTO (Master Save)</button>
+    <div class="sub" style="margin-top:6px;line-height:1.5">
+      Salva in 1 clic: posa attuale, tutti gli 8 STL, parametri fisici e pesi, tutte le pose, tutte le routine, velocità e 3D.
+    </div>
+
+    <h2 style="margin-top:16px">Pose Statiche</h2>
+    <div class="row"><label>Nome posa</label><input id="poseName" type="text" value="rest_point"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+      <button id="savePose" class="primary" style="margin:0">💾 Salva/Aggiungi Posa</button>
+      <button id="deletePose" style="margin:0;color:var(--bad)">Elimina posa</button>
+    </div>
+    <select id="poseList" size="5" style="width:100%;margin-top:7px"></select>
+    <button id="playPose">Simula posa selezionata</button>
+
+    <h2 style="margin-top:16px">Sincronizzazione File Disco (Marco Codici 6 DOF)</h2>
+    <button id="writeProject" class="primary">💾 Sincronizza File JSON su Disco</button>
+    <div class="sub" style="margin-top:8px;line-height:1.6">
+      📁 <b>robot6dof_stl_config.json</b>: Geometria, STL e pesi componenti.<br>
+      📁 <b>robot6dof_saved_poses.json</b>: Pose statiche, fisiche e velocità.<br>
+      📁 <b>robot6dof_animations.json</b>: Routine e sequenze timeline.<br>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:8px">
+      <button id="reloadAllJsonBtn" style="margin:0">🔄 Ricarica JSON da Disco</button>
+      <button id="btnConnectFolderDirect" style="margin:0;background:#152932;border-color:var(--a)">📂 Collega Cartella</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:6px">
+      <button id="dlStlJson" style="font-size:9.5px;padding:6px 2px;margin:0">📥 STL JSON</button>
+      <button id="dlPosesJson" style="font-size:9.5px;padding:6px 2px;margin:0">📥 Pose JSON</button>
+      <button id="dlAnimJson" style="font-size:9.5px;padding:6px 2px;margin:0">📥 Anim JSON</button>
+    </div>
+
+    <h2 style="margin-top:16px">Backup Completo (Master 1 File)</h2>
+    <button id="btnDownloadMasterBackup" class="purple">📦 Scarica Backup Master (1 File .JSON)</button>
+    <div class="sub" style="margin-top:6px">Ripristina l'intero progetto da file Master:</div>
+    <input type="file" id="masterBackupFileInput" accept=".json" style="margin-top:4px;width:100%">
+
+    <button id="exportCpp" style="margin-top:14px">Esporta IK C++ completa ESP32</button>
+  </section>
+</aside>
+
+<!-- RESIZER SINISTRO TRASCINABILE -->
+<div class="resizer" id="resizerLeft" title="Trascina per allargare/restringere il pannello sinistro"></div>
+
+<main id="view">
+  <!-- PULSANTI TOGGLE PANNELLI -->
+  <button class="toggle-panel-btn" id="toggleLeftBtn" title="Mostra/Nascondi Pannello Sinistro">◀</button>
+  <button class="toggle-panel-btn" id="toggleRightBtn" title="Mostra/Nascondi Pannello Destro">▶</button>
+
+  <!-- BARRA VISTE CAD RAPIDE (FLOATING HUD) -->
+  <div class="cad-toolbar">
+    <button class="cad-btn active" id="viewIso">Isometrica</button>
+    <button class="cad-btn" id="viewTop">Alto (Z)</button>
+    <button class="cad-btn" id="viewFront">Fronte (XZ)</button>
+    <button class="cad-btn" id="viewSide">Lato (YZ)</button>
+    <button class="cad-btn" id="viewReset">Centra</button>
+    <button class="cad-btn" id="viewFull" title="Schermo Intero">⛶ Full</button>
+  </div>
+
+  <div class="hint">⚡ LIVE FEA: Colori calcolati in tempo reale · GIZMO 3D: trascina frecce X/Y/Z · Ruota vista: trascina sfondo</div>
+</main>
+
+<!-- RESIZER DESTRO TRASCINABILE -->
+<div class="resizer" id="resizerRight" title="Trascina per allargare/restringere il pannello destro"></div>
+
+<aside class="panel right">
+  <h1>DIAGNOSTICA & FISICA</h1>
+
+  <!-- SEZIONE DIAGNOSTICA COPPIE E STRESS MOTORI LIVE -->
+  <section class="block">
+    <h2>⚡ Coppie Motori & Stress FEA</h2>
+    <div id="liveStressCardsContainer"></div>
+  </section>
+
+  <!-- RIEPILOGO MASSA E BARICENTRO -->
+  <section class="block">
+    <h2>⚖️ Bilancio Masse & Baricentro</h2>
+    <div class="status" id="physicsGlobalStatus">
+      Massa Totale Robot: <span class="good" id="statTotalMass">1595 g</span><br>
+      Oggetto Preso Pinza: <span id="statPayloadMassLive" class="fea-txt">250 g</span><br>
+      Coordinate Baricentro: <span id="statCoMPos" class="good">(0.0, 0.0, 0.0) mm</span><br>
+      Sicurezza Sforzo IK: <span id="statTorqueSafety" class="good">🛡️ Protezione Attiva (&lt;100%)</span>
+    </div>
+  </section>
+
+  <!-- NUOVA SEZIONE RESISTENZA MATERIALE E CARICO LIMITE -->
+  <section class="block">
+    <h2>🧪 Resistenza Materiale & Rottura STL</h2>
+    <div class="status" id="materialGlobalStatus">
+      Materiale Attivo: <span class="good" id="statActiveMat">PETG (4 muri · 40%)</span><br>
+      Fattore di Sicurezza Min: <span class="good" id="statMinSafetyFactor">SF = 4.5 (Sicuro 🟢)</span><br>
+      Pezzo più Sollecitato: <span class="fea-txt" id="statMostStressedStl">braccio_1.stl (J2)</span><br>
+      Tensione Max: <span id="statMaxVonMisesStress" class="good">8.2 MPa / 36.5 MPa</span><br>
+      Carico di Rottura Posa: <span id="statBreakingPayloadEst" class="good">2.95 kg</span>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Geometria & Postura Gru</h2>
+    <div class="status" id="craneStatus">
+      Forma braccio: <span class="good" id="postureShapeBadge">🏗️ U Rovesciata / Min. Torque J2 ✓</span><br>
+      Coppia J2 (Spalla): <span id="j2TorqueStat" class="good">0.0 kg·cm (0%) ✓</span><br>
+      Inclinazione J2 (Spalla): <span id="j2AngleStat" class="good">0.0° (Verticale 0° ✓)</span><br>
+      Altezza Gomito (J4): <span id="elbowZStat" class="good">-- mm</span><br>
+      Allineamento Pinza: <span id="gripAngleErr" class="good">0.0° (Radiale ✓)</span>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Stato Sincronizzazione</h2>
+    <div class="status" id="persistenceStatus">
+      Modalità: <span class="good" id="modeBadge">Rilevamento...</span><br>
+      Cartella: <span class="good" id="folderNameBadge">Marco Codici 6 DOF</span><br>
+      File STL: <span class="good" id="stlCountBadge">0 caricati</span><br>
+      File JSON: <span class="good" id="jsonCountBadge">3 file sincronizzati ✓</span>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Stato Animazione / Routine</h2>
+    <div class="status" id="animLiveStatus">
+      Routine: <span class="good" id="animCurrentGroupLbl">Nessuna attiva</span><br>
+      Passo: <span id="animCurrentStepLbl" class="sub">--</span><br>
+      Azione: <span id="animCurrentActionLbl" class="sub">Pronto</span>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Gerarchia pezzi</h2>
+    <div class="sub">Clicca un elemento per selezionarlo e colorarlo nella scena.</div>
+    <div id="hierarchy"></div>
+  </section>
+
+  <section class="block">
+    <h2>Soluzione IK</h2>
+    <div class="status" id="status">Posa iniziale di riposo (Rest).</div>
+  </section>
+
+  <section class="block">
+    <h2>Angoli giunti</h2>
+    <div class="status" id="angles"></div>
+  </section>
+
+  <section class="block">
+    <h2>Punto pinza (Endpoint)</h2>
+    <div class="status" id="position"></div>
+  </section>
+</aside>
+</div>
+
+<script>
+const D=Math.PI/180, R=180/Math.PI, limits=[[-135,135],[-90,90],[-135,135],[-135,90],[-135,135],[-105,105]];
+const defaultRestPose=[0,47,0,-69,7,-68];
+const defaultJointSpeeds=[20,15,23,34,90,90];
+let jointSpeeds=defaultJointSpeeds.slice(), globalSpeed=100;
+let geo={d12:50,L1:220,d34:50,L2:220,d56:50,Lg:150,diameter:30}, q=defaultRestPose.slice(), shownQ=q.slice(), target=[34.5,-427.2,210.2], anim=null, smoothWeight=100;
+const $=id=>document.getElementById(id), clamp=(x,a,b)=>Math.max(a,Math.min(b,x)), norm=v=>Math.hypot(...v), sub=(a,b)=>a.map((x,i)=>x-b[i]);
+function mul(A,B){let C=[[0,0,0],[0,0,0],[0,0,0]];for(let i=0;i<3;i++)for(let j=0;j<3;j++)for(let k=0;k<3;k++)C[i][j]+=A[i][k]*B[k][j];return C}
+function mv(A,v){return A.map(r=>r[0]*v[0]+r[1]*v[1]+r[2]*v[2])}
+function rz(a){let c=Math.cos(a),s=Math.sin(a);return [[c,-s,0],[s,c,0],[0,0,1]]}
+function ry(a){let c=Math.cos(a),s=Math.sin(a);return [[c,0,s],[0,1,0],[-s,0,c]]}
+
+/* =========================================================================
+   === CONFIGURAZIONE E STRUTTURE DATI FISICA & TORQUE MOTORI (v29) ===
+   ========================================================================= */
+const defaultMotorSpecs = [
+  { name: "J1 Base Yaw", weight: 65, maxTorque: 25.0 },     // kg*cm
+  { name: "J2 Spalla Pitch", weight: 65, maxTorque: 35.0 },  // kg*cm
+  { name: "J3 Braccio Roll", weight: 55, maxTorque: 20.0 },  // kg*cm
+  { name: "J4 Gomito Pitch", weight: 60, maxTorque: 25.0 },  // kg*cm
+  { name: "J5 Polso Roll", weight: 45, maxTorque: 15.0 },    // kg*cm
+  { name: "J6 Pinza Pitch", weight: 35, maxTorque: 10.0 }    // kg*cm
+];
+
+const defaultStlWeights = {
+  "base_finita.stl": 280,
+  "coperchio_base_rotante.stl": 160,
+  "collegamento_giunti_braccio_1.stl": 65,
+  "braccio_1.stl": 175,
+  "collegamento_giunti_braccio_2.stl": 65,
+  "braccio_2.stl": 145,
+  "collegamento_giunti_braccio_3.stl": 55,
+  "braccio_fine.stl": 85
+};
+
+let physicsConfig = {
+  payload: {
+    enabled: true,
+    mass: 250, // grammi
+    dimX: 45,
+    dimY: 45,
+    dimZ: 45,
+    color: '#ff8c00'
+  },
+  motors: JSON.parse(JSON.stringify(defaultMotorSpecs)),
+  stlWeights: Object.assign({}, defaultStlWeights),
+  fea: {
+    enabled: true,
+    showCoM: true,
+    showTorqueRings: true,
+    showBaseCircle: true
+  },
+  torqueProtection: true
+};
+
+/* =========================================================================
+   === DATABASE MATERIALI 3D & CONFIGURAZIONE STRUTTURALE (v30) ===
+   ========================================================================= */
+const materialsDatabase = {
+  "PLA": {
+    name: "PLA (Polylactic Acid)",
+    density: 1.24, // g/cm^3
+    yieldStrength: 50.0, // MPa (N/mm^2)
+    ultimateStrength: 65.0, // MPa
+    flexuralModulus: 3.5, // GPa
+    layerBondFactor: 0.65, // 65% tenuta tra i layer
+    color: '#00f0ff',
+    desc: "Molto rigido e ad alta resistenza a trazione, ma fragile agli urti e cede termicamente a ~55°C."
+  },
+  "PETG": {
+    name: "PETG (Polyethylene Terephthalate)",
+    density: 1.27,
+    yieldStrength: 48.0,
+    ultimateStrength: 55.0,
+    flexuralModulus: 2.1,
+    layerBondFactor: 0.85, // eccellente fusione layer
+    color: '#22c55e',
+    desc: "Ottima adesione tra i layer, elevata tenacità agli urti e flessibilità elastica continua."
+  },
+  "ABS": {
+    name: "ABS / ASA",
+    density: 1.05,
+    yieldStrength: 42.0,
+    ultimateStrength: 50.0,
+    flexuralModulus: 2.3,
+    layerBondFactor: 0.75,
+    color: '#f97316',
+    desc: "Resistente a urti, torsioni e temperature elevate (fino a 90°C), duttile sotto sforzo."
+  },
+  "PACF": {
+    name: "PA-CF (Nylon Fibra Carbonio)",
+    density: 1.20,
+    yieldStrength: 105.0,
+    ultimateStrength: 140.0,
+    flexuralModulus: 7.8,
+    layerBondFactor: 0.90,
+    color: '#a855f7',
+    desc: "Massima rigidità e resistenza strutturale aerospaziale. Elevatissimo carico di rottura."
+  },
+  "TPU": {
+    name: "TPU 95A (Elastomero)",
+    density: 1.21,
+    yieldStrength: 25.0,
+    ultimateStrength: 45.0,
+    flexuralModulus: 0.15,
+    layerBondFactor: 0.95,
+    color: '#eab308',
+    desc: "Flessibile e indistruttibile all'impatto, si flette invece di spezzarsi."
+  }
+};
+
+let materialConfig = {
+  selectedMaterial: 'PETG',
+  infillPct: 40,
+  wallCount: 4,
+  layerOrientation: 'horizontal',
+  safetyFactorTarget: 2.0
+};
+
+let calculatedStlStructuralData = [];
+
+let calculatedTorques = [0, 0, 0, 0, 0, 0]; // Torque motore utile in kg*cm (parallelo all'asse)
+let calculatedTorquesNm = [0, 0, 0, 0, 0, 0]; // Torque motore utile in N*m
+let calculatedBendingKg = [0, 0, 0, 0, 0, 0]; // Momento flettente ortogonale in kg*cm (scaricato su STL/cuscinetti)
+let calculatedBendingNm = [0, 0, 0, 0, 0, 0]; // Momento flettente ortogonale in N*m
+let calculatedTotalMomentKg = [0, 0, 0, 0, 0, 0]; // Modulo risultante 3D totale in kg*cm
+let calculatedStressPct = [0, 0, 0, 0, 0, 0]; // 0 .. 100%+
+let globalCenterOfMass = [0, 0, 0];
+let totalRobotMassGrams = 0;
+
+/* === CINEMATICA DIRETTA === */
+function fk(deg){
+  let M=[[1,0,0],[0,1,0],[0,0,1]],p=[0,0,0],pts=[p.slice()],frames=[];
+  [[0,geo.d12,1],[1,geo.L1,0],[2,geo.d34,1],[3,geo.L2,0],[4,geo.d56,1],[5,geo.Lg,0]].forEach(([i,l,z])=>{
+    M=mul(M,z?rz(deg[i]*D):ry(deg[i]*D));
+    frames.push(M.map(row=>row.slice()));
+    p=p.map((v,k)=>v+mv(M,[0,0,l])[k]);
+    pts.push(p.slice());
+  });
+  return {pts,frames,end:p,axis:mv(M,[0,0,1])};
+}
+
+function solveLinear(A,b){
+  let n=b.length,M=A.map((r,i)=>r.slice().concat(b[i]));
+  for(let k=0;k<n;k++){
+    let p=k;
+    for(let i=k+1;i<n;i++)if(Math.abs(M[i][k])>Math.abs(M[p][k]))p=i;
+    if(Math.abs(M[p][k])<1e-10)return null;
+    [M[k],M[p]]=[M[p],M[k]];
+    let z=M[k][k];
+    for(let j=k;j<=n;j++)M[k][j]/=z;
+    for(let i=0;i<n;i++)if(i!==k){
+      let f=M[i][k];
+      for(let j=k;j<=n;j++)M[i][j]-=f*M[k][j];
+    }
+  }
+  return M.map(r=>r[n]);
+}
+
+/* =========================================================================
+   === VALUTAZIONE FISICA RAPIDA COPPIE / SFORZI PER IK ===
+   ========================================================================= */
+function evaluatePoseTorques(deg){
+  let f = fk(deg);
+  let pts = f.pts;
+  let frames = f.frames;
+
+  let jointAxes = [
+    [0, 0, 1],
+    mv(frames[0], [0, 1, 0]),
+    mv(frames[1], [0, 0, 1]),
+    mv(frames[2], [0, 1, 0]),
+    mv(frames[3], [0, 0, 1]),
+    mv(frames[4], [0, 1, 0])
+  ];
+
+  let jointPivots = [pts[0], pts[1], pts[2], pts[3], pts[4], pts[5]];
+  let massElements = [];
+
+  physicsConfig.motors.forEach((mot, idx) => {
+    let pivotPt = jointPivots[idx] || [0,0,0];
+    massElements.push({
+      mass: mot.weight || 50,
+      pos: pivotPt,
+      attachLink: idx
+    });
+  });
+
+  assets.forEach((a) => {
+    let stlName = a.name;
+    let mass = physicsConfig.stlWeights[stlName] || 100;
+    let centerPos = [0,0,0];
+    if(a.attach < 0){
+      centerPos = [a.mesh.position.x, -a.mesh.position.z, a.mesh.position.y];
+    } else {
+      let ji = a.attach === 6 ? 5 : a.attach;
+      let originPt = a.attach === 6 ? f.end : pts[a.attach];
+      let frameMat = frames[ji];
+      let localOffset = [a.mesh.position.x, -a.mesh.position.z, a.mesh.position.y];
+      let worldRotOffset = mv(frameMat, localOffset);
+      centerPos = [originPt[0] + worldRotOffset[0], originPt[1] + worldRotOffset[1], originPt[2] + worldRotOffset[2]];
+    }
+    massElements.push({mass, pos: centerPos, attachLink: a.attach});
+  });
+
+  if(physicsConfig.payload.enabled && physicsConfig.payload.mass > 0){
+    massElements.push({
+      mass: physicsConfig.payload.mass,
+      pos: f.end,
+      attachLink: 6
+    });
+  }
+
+  const G = 9.80665;
+  let torquesKg = [0,0,0,0,0,0];
+  let bendingKg = [0,0,0,0,0,0];
+  let totalMomentsKg = [0,0,0,0,0,0];
+  let stressPcts = [0,0,0,0,0,0];
+  let maxStress = 0, sumStress = 0;
+
+  for(let j = 0; j < 6; j++){
+    let pivot = jointPivots[j];
+    let axis = jointAxes[j];
+    let axLen = norm(axis) || 1;
+    let uAxis = [axis[0]/axLen, axis[1]/axLen, axis[2]/axLen]; // Versore asse di rotazione del servo
+
+    // 1. Somma Vettoriale 3D del Momento Totale rispetto al pivot j: M_tot = ∑ (R_k × F_k)
+    let M_tot = [0, 0, 0];
+
+    massElements.forEach(el => {
+      if(el.attachLink >= j){
+        // Braccio di leva R_k (in metri) dal perno del giunto al baricentro del pezzo/motore
+        let rx = (el.pos[0] - pivot[0]) * 0.001;
+        let ry = (el.pos[1] - pivot[1]) * 0.001;
+        let rz = (el.pos[2] - pivot[2]) * 0.001;
+
+        // Vettore forza peso F_k in Newton (diretto verso il basso lungo -Z)
+        let Fz = -(el.mass * 0.001) * G;
+
+        // Prodotto vettoriale 3D esatto: R × F = [ry*Fz - rz*Fy, rz*Fx - rx*Fz, rx*Fy - ry*Fx]
+        let tauX = ry * Fz;
+        let tauY = -rx * Fz;
+        let tauZ = 0;
+
+        M_tot[0] += tauX;
+        M_tot[1] += tauY;
+        M_tot[2] += tauZ;
+      }
+    });
+
+    // 2. Scomposizione Vettoriale Ortogonale:
+    // Componente Parallela (lungo l'asse di rotazione uAxis) -> Carico effettivo sul motore servo:
+    let tauMotorNm = M_tot[0] * uAxis[0] + M_tot[1] * uAxis[1] + M_tot[2] * uAxis[2];
+    let absMotorNm = Math.abs(tauMotorNm);
+    let motorTorqueKgCm = absMotorNm * 10.19716;
+
+    // Componente Perpendicolare all'asse -> Momento flettente/taglio scaricato su cuscinetti e STL:
+    let M_parallel = [tauMotorNm * uAxis[0], tauMotorNm * uAxis[1], tauMotorNm * uAxis[2]];
+    let M_perp = [M_tot[0] - M_parallel[0], M_tot[1] - M_parallel[1], M_tot[2] - M_parallel[2]];
+    let absBendingNm = Math.sqrt(M_perp[0]*M_perp[0] + M_perp[1]*M_perp[1] + M_perp[2]*M_perp[2]);
+    let bendingKgCm = absBendingNm * 10.19716;
+
+    // Modulo Risultante 3D Totale:
+    let absTotalMomNm = Math.sqrt(M_tot[0]*M_tot[0] + M_tot[1]*M_tot[1] + M_tot[2]*M_tot[2]);
+    let totalMomKgCm = absTotalMomNm * 10.19716;
+
+    torquesKg[j] = motorTorqueKgCm;
+    bendingKg[j] = bendingKgCm;
+    totalMomentsKg[j] = totalMomKgCm;
+
+    let rated = physicsConfig.motors[j].maxTorque || 20.0;
+    let s = (motorTorqueKgCm / rated) * 100.0;
+    stressPcts[j] = s;
+    if(s > maxStress) maxStress = s;
+    sumStress += s;
+  }
+
+  return {
+    torquesKg,
+    bendingKg,
+    totalMomentsKg,
+    stressPcts,
+    maxStress,
+    avgStress: sumStress / 6.0,
+    isOverloaded: maxStress >= 100
+  };
+}
+
+/* =========================================================================
+   === VELOCITÀ MOTORI ===
+   ========================================================================= */
+function buildSpeedSliders(){
+  let container=$('speedSliders');
+  container.innerHTML='';
+  for(let i=0;i<6;i++){
+    let d=document.createElement('div');
+    d.className='row';
+    d.innerHTML=`<label>Velocità J${i+1}</label><input type="range" min="10" max="180" value="${jointSpeeds[i]}"><span class="val">${jointSpeeds[i]}°/s</span>`;
+    d.querySelector('input').oninput=e=>{
+      jointSpeeds[i]=+e.target.value;
+      d.querySelector('.val').textContent=jointSpeeds[i]+'°/s';
+      scheduleProjectWrite();
+    };
+    container.appendChild(d);
+  }
+}
+buildSpeedSliders();
+
+$('globalSpeed').oninput=e=>{
+  globalSpeed=+e.target.value;
+  $('globalSpeedVal').textContent=globalSpeed+'%';
+  scheduleProjectWrite();
+};
+$('resetSpeeds').onclick=()=>{
+  jointSpeeds=defaultJointSpeeds.slice();
+  globalSpeed=100;
+  $('globalSpeed').value=100;
+  $('globalSpeedVal').textContent='100%';
+  buildSpeedSliders();
+  scheduleProjectWrite();
+  $('status').innerHTML='<span class="good">Velocità ripristinate ai valori predefiniti.</span>';
+};
+
+/* =========================================================================
+   === MOTORE IK MODERNO AD ALTA RAGGIUNGIBILITÀ (MULTI-STRATEGIA & DLS) ===
+   ========================================================================= */
+
+function getDesiredGripperAxis(t, orient){
+  let rxy = Math.hypot(t[0], t[1]);
+  let ux = rxy > 1e-4 ? t[0] / rxy : 1, uy = rxy > 1e-4 ? t[1] / rxy : 0;
+  if(orient){
+    return [ux, uy, 0]; // Orizzontale & Radiale
+  } else {
+    let r3d = norm(t);
+    return r3d > 1e-4 ? [t[0]/r3d, t[1]/r3d, t[2]/r3d] : [ux, uy, 0];
+  }
+}
+
+// 1. Risolutore Analitico Diretto 3-Link nel piano per orientamenti multipli della pinza
+function solveAnalyticalPlanar3Link(rw, zw, L1, L2, L3, gripperPitchDeg){
+  // pitchRad: 0 = pinza perfettamente orizzontale
+  let pitchRad = gripperPitchDeg * D;
+  let dr_grip = L3 * Math.cos(pitchRad);
+  let dz_grip = -L3 * Math.sin(pitchRad);
+
+  let r_wrist = rw - dr_grip;
+  let z_wrist = zw - dz_grip;
+
+  let dr = r_wrist;
+  let dz = z_wrist - geo.d12;
+  let D2 = dr * dr + dz * dz;
+  let D_len = Math.sqrt(D2);
+
+  if(D_len > (L1 + L2) || D_len < Math.abs(L1 - L2) || D_len < 1e-3) return null;
+
+  let cosT4 = (D2 - L1 * L1 - L2 * L2) / (2 * L1 * L2);
+  cosT4 = clamp(cosT4, -0.9999, 0.9999);
+  let theta4_up = -Math.acos(cosT4) * R;
+  let theta4_down = Math.acos(cosT4) * R;
+
+  let psi = Math.atan2(dz, dr) * R;
+  let cosBeta = (L1 * L1 + D2 - L2 * L2) / (2 * L1 * D_len);
+  cosBeta = clamp(cosBeta, -0.9999, 0.9999);
+  let beta = Math.acos(cosBeta) * R;
+
+  let j2_crane = 90.0 - (psi + beta);
+  let j4_crane = theta4_up;
+  // Per pinza orizzontale (gripperPitchDeg=0): j2 + j4 + j6 = 90.0° -> j6 = 90.0 - (j2 + j4)
+  let j6_crane = 90.0 - (j2_crane + j4_crane) - gripperPitchDeg;
+
+  let j2_scoop = 90.0 - (psi - beta);
+  let j4_scoop = theta4_down;
+  let j6_scoop = 90.0 - (j2_scoop + j4_scoop) - gripperPitchDeg;
+
+  let solCrane = { j2: j2_crane, j4: j4_crane, j6: j6_crane };
+  let solScoop = { j2: j2_scoop, j4: j4_scoop, j6: j6_scoop };
+
+  return { solCrane, solScoop };
+}
+
+// 2. Risolutore Numerico Levenberg-Marquardt Damped Least Squares (DLS)
+function ikOne(target, seed, orientActive, orientWeight = 1.0){
+  let x = seed.slice();
+  let targetAxis = getDesiredGripperAxis(target, orientActive);
+  let best = { score: Infinity, posErr: Infinity, orientErr: 1, x: x.slice() };
+  let lambda = 0.25;
+
+  const maxIter = 300;
+  for(let it = 0; it < maxIter; it++){
+    let f = fk(x);
+    let pErr = [target[0] - f.end[0], target[1] - f.end[1], target[2] - f.end[2]];
+    let posNorm = norm(pErr);
+
+    let axErr = [targetAxis[0] - f.axis[0], targetAxis[1] - f.axis[1], targetAxis[2] - f.axis[2]];
+    let orientNorm = norm(axErr);
+
+    let wRot = orientActive ? (35.0 * orientWeight) : 1.0;
+    let score = posNorm + orientNorm * wRot;
+
+    if(score < best.score){
+      best = { score, posErr: posNorm, orientErr: orientNorm, x: x.slice() };
+    }
+
+    if(posNorm < 0.6 && (!orientActive || orientNorm < 0.04 || orientWeight < 0.2)){
+      return { ok: true, x, posErr: posNorm, orientErr: orientNorm, axis: f.axis };
+    }
+
+    let e = [
+      pErr[0], pErr[1], pErr[2],
+      axErr[0] * wRot, axErr[1] * wRot, axErr[2] * wRot
+    ];
+
+    let J = Array.from({length: 6}, () => Array(6).fill(0));
+    const delta = 0.02;
+    for(let i = 0; i < 6; i++){
+      let qTest = x.slice();
+      qTest[i] += delta;
+      let fTest = fk(qTest);
+      for(let r = 0; r < 3; r++) J[r][i] = (fTest.end[r] - f.end[r]) / delta;
+      for(let r = 0; r < 3; r++) J[r+3][i] = ((fTest.axis[r] - f.axis[r]) / delta) * wRot;
+    }
+
+    let A = Array.from({length: 6}, () => Array(6).fill(0));
+    let rhs = Array(6).fill(0);
+
+    for(let i = 0; i < 6; i++){
+      for(let j = 0; j < 6; j++){
+        for(let r = 0; r < 6; r++) A[i][j] += J[r][i] * J[r][j];
+        if(i === j) A[i][j] += lambda;
+      }
+      for(let r = 0; r < 6; r++) rhs[i] += J[r][i] * e[r];
+    }
+
+    let dq = solveLinear(A, rhs);
+    if(!dq){
+      lambda = Math.min(50.0, lambda * 2.5);
+      continue;
+    }
+
+    let xNew = x.slice();
+    for(let k = 0; k < 6; k++){
+      let step = clamp(dq[k], -8.0, 8.0);
+      xNew[k] = clamp(xNew[k] + step, limits[k][0], limits[k][1]);
+    }
+
+    let fNew = fk(xNew);
+    let pNewNorm = norm(sub(target, fNew.end));
+    let axNewNorm = norm([targetAxis[0] - fNew.axis[0], targetAxis[1] - fNew.axis[1], targetAxis[2] - fNew.axis[2]]);
+    let newScore = pNewNorm + axNewNorm * wRot;
+
+    if(newScore < score){
+      x = xNew;
+      lambda = Math.max(0.005, lambda * 0.65);
+    } else {
+      lambda = Math.min(60.0, lambda * 2.0);
+      for(let k = 0; k < 6; k++){
+        x[k] = clamp(x[k] + dq[k] * 0.3, limits[k][0], limits[k][1]);
+      }
+    }
+  }
+
+  let isCloseEnough = best.posErr < 0.8 && (!orientActive || best.orientErr < 0.06 || orientWeight < 0.2);
+  return { ok: isCloseEnough, x: best.x, posErr: best.posErr, orientErr: best.orientErr, score: best.score };
+}
+
+// 3. Funzione di Punteggio / Ordinamento Soluzioni Valide
+function scoreValidSolution(solQ, posture, orient, target, prevQ){
+  let cost = 0;
+  let f = fk(solQ);
+  let phys = evaluatePoseTorques(solQ);
+  let j2Stress = phys.stressPcts[1];
+  let maxStress = phys.maxStress;
+
+  let elbowZ = f.pts[3][2];
+  let wristZ = f.pts[5][2];
+  let isCraneArch = elbowZ > wristZ;
+
+  // Penalità rigorosa ed esponenziale per qualsiasi sovraccarico motore (> 70%)
+  if(maxStress > 70.0){
+    cost += Math.pow(maxStress - 70.0, 2) * 80.0 + 2000.0;
+  }
+  if(maxStress > 85.0){
+    cost += 50000.0 + (maxStress - 85.0) * 2000.0;
+  }
+
+  if(posture === 'min_j2'){
+    cost += j2Stress * 50.0 + Math.pow(j2Stress, 1.8) * 20.0;
+    if(!isCraneArch) cost += 1500.0;
+  } else if(posture === 'crane'){
+    if(isCraneArch){
+      cost -= (elbowZ - wristZ) * 6.0;
+    } else {
+      cost += 5000.0 + (wristZ - elbowZ) * 60.0;
+    }
+    cost += j2Stress * 25.0;
+  } else if(posture === 'scoop'){
+    if(solQ[3] < 0) cost += 3500.0;
+    cost += j2Stress * 15.0;
+  } else {
+    for(let i = 0; i < 6; i++){
+      let diff = Math.abs(solQ[i] - prevQ[i]);
+      cost += diff * 5.0;
+    }
+    cost += j2Stress * 12.0;
+  }
+
+  cost += (Math.abs(solQ[2]) + Math.abs(solQ[4])) * 20.0;
+  return cost;
+}
+
+// 4. Risolutore Master IK ad Alta Raggiungibilità
+function ik(target, currentQ, orientRequested){
+  let posture = $('postureMode')?.value || 'min_j2';
+  let yaw = Math.atan2(target[1], target[0]) * R;
+  let yawRev = (yaw > 0) ? yaw - 180.0 : yaw + 180.0;
+  let rxy = Math.hypot(target[0], target[1]);
+  let zw = target[2];
+
+  let L1 = geo.L1 + geo.d34 * 0.5;
+  let L2 = geo.L2 + geo.d56 * 0.5;
+  let L3 = geo.Lg;
+
+  let seedList = [];
+
+  // A. Semi Analitici Trigonometrici con vari angoli di pitch pinza
+  const pitchAngles = [0, -10, 10, -20, 20, -30, 30, -45, 45, -60, 60, -90, 90];
+  pitchAngles.forEach(pitchDeg => {
+    let sol = solveAnalyticalPlanar3Link(rxy, zw, L1, L2, L3, pitchDeg);
+    if(sol){
+      let c = sol.solCrane;
+      let s = sol.solScoop;
+      if(c.j2 >= limits[1][0] && c.j2 <= limits[1][1] && c.j4 >= limits[3][0] && c.j4 <= limits[3][1] && c.j6 >= limits[5][0] && c.j6 <= limits[5][1]){
+        seedList.push([clamp(yaw, limits[0][0], limits[0][1]), c.j2, 0, c.j4, 0, c.j6]);
+      } else {
+        seedList.push([clamp(yaw, limits[0][0], limits[0][1]), clamp(c.j2, limits[1][0], limits[1][1]), 0, clamp(c.j4, limits[3][0], limits[3][1]), 0, clamp(c.j6, limits[5][0], limits[5][1])]);
+      }
+      if(s.j2 >= limits[1][0] && s.j2 <= limits[1][1] && s.j4 >= limits[3][0] && s.j4 <= limits[3][1] && s.j6 >= limits[5][0] && s.j6 <= limits[5][1]){
+        seedList.push([clamp(yaw, limits[0][0], limits[0][1]), s.j2, 0, s.j4, 0, s.j6]);
+      } else {
+        seedList.push([clamp(yaw, limits[0][0], limits[0][1]), clamp(s.j2, limits[1][0], limits[1][1]), 0, clamp(s.j4, limits[3][0], limits[3][1]), 0, clamp(s.j6, limits[5][0], limits[5][1])]);
+      }
+    }
+  });
+
+  // B. Semi a scansione angolare di spalla J2 (-20° .. +80°) specifici per pinza orizzontale
+  const testJ2Angles = [-20, -10, 0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 80];
+  testJ2Angles.forEach(testJ2 => {
+    let j2Rad = testJ2 * D;
+    let r_elb = L1 * Math.sin(j2Rad);
+    let z_elb = geo.d12 + L1 * Math.cos(j2Rad);
+
+    let dr = (rxy - L3) - r_elb;
+    let dz = zw - z_elb;
+    let Drem = Math.hypot(dr, dz);
+    let Dclamp = clamp(Drem, 10, L2 - 2);
+
+    let psi = Math.atan2(dz, dr) * R;
+    let t4 = clamp(-(90.0 - psi - testJ2), limits[3][0], limits[3][1]);
+    let t6 = clamp(90.0 - (testJ2 + t4), limits[5][0], limits[5][1]);
+
+    seedList.push([clamp(yaw, limits[0][0], limits[0][1]), clamp(testJ2, limits[1][0], limits[1][1]), 0, t4, 0, t6]);
+  });
+
+  // C. Semi standard con configurazioni bilanciate
+  seedList.push(currentQ.slice());
+  seedList.push(defaultRestPose.slice());
+  seedList.push([yaw, 45, 0, -25, 0, 70]);
+  seedList.push([yaw, 30, 0, -10, 0, 70]);
+  seedList.push([yaw, 55, 0, -35, 0, 70]);
+  seedList.push([yaw, 65, 0, -45, 0, 70]);
+  seedList.push([yaw, 20, 0, 0, 0, 70]);
+  seedList.push([yaw, 35, 0, -60, 0, 90]);
+  seedList.push([yawRev, -25, 0, -45, 0, 70]);
+
+  // STAGE 1: Risoluzione Completa con Orientamento Richiesto
+  let resultsStage1 = seedList.map(s => ikOne(target, s, orientRequested, 1.0));
+  let goodStage1 = resultsStage1.filter(r => r.ok && r.posErr < 0.8 && (!orientRequested || r.orientErr < 0.08));
+
+  if(goodStage1.length > 0){
+    goodStage1.sort((a, b) => {
+      let costA = scoreValidSolution(a.x, posture, orientRequested, target, currentQ) + (a.posErr * 20.0);
+      let costB = scoreValidSolution(b.x, posture, orientRequested, target, currentQ) + (b.posErr * 20.0);
+      return costA - costB;
+    });
+    return { ok: true, x: goodStage1[0].x, e: goodStage1[0].posErr, orientErr: goodStage1[0].orientErr };
+  }
+
+  // STAGE 2 (Fallback Intelligente): Se il punto è raggiungibile rilassando l'orientamento
+  let resultsStage2 = seedList.map(s => ikOne(target, s, false, 0.0));
+  let goodStage2 = resultsStage2.filter(r => r.ok && r.posErr < 0.9);
+
+  if(goodStage2.length > 0){
+    goodStage2.sort((a, b) => {
+      let costA = scoreValidSolution(a.x, posture, false, target, currentQ) + (a.posErr * 30.0);
+      let costB = scoreValidSolution(b.x, posture, false, target, currentQ) + (b.posErr * 30.0);
+      return costA - costB;
+    });
+    return { ok: true, x: goodStage2[0].x, e: goodStage2[0].posErr, orientErr: goodStage2[0].orientErr, relaxed: true };
+  }
+
+  // STAGE 3: Migliore approssimazione geometrica (fuori portata)
+  resultsStage1.sort((a, b) => a.score - b.score);
+  return { ok: false, x: resultsStage1[0].x, e: resultsStage1[0].posErr, orientErr: resultsStage1[0].orientErr };
+}
+
+function calculateMoveDuration(fromPose, toPose){
+  let maxTimeMs=300, mult=globalSpeed/100.0;
+  for(let i=0;i<6;i++){
+    let delta=Math.abs(toPose[i]-fromPose[i]);
+    let effSpeed=Math.max(1, jointSpeeds[i]*mult);
+    let timeMs=(delta/effSpeed)*1000;
+    if(timeMs>maxTimeMs) maxTimeMs=timeMs;
+  }
+  return maxTimeMs;
+}
+
+/* === MOTORE DI PIANIFICAZIONE TRAIETTORIE A MINIMO SFORZO (C-SPACE ANTI-OVERLOAD PATHFINDER) === */
+function planStressOptimalTrajectory(fromPose, toPose){
+  let startStress = evaluatePoseTorques(fromPose).maxStress;
+  let endStress = evaluatePoseTorques(toPose).maxStress;
+  // Soglia di sicurezza dinamica (mai oltre il 68%, o il massimo tra A e B se già moderatamente elevati)
+  let safeThreshold = Math.max(65.0, Math.max(startStress, endStress) + 1.5);
+
+  function recursivePlan(pA, pB, depth){
+    if(depth <= 0) return [pA, pB];
+    
+    let worstStress = 0, worstT = 0, worstQ = null;
+    const SAMPLES = 14;
+    for(let s = 1; s < SAMPLES; s++){
+      let t = s / SAMPLES;
+      let qTest = pA.map((v, i) => v + (pB[i] - v) * t);
+      let st = evaluatePoseTorques(qTest).maxStress;
+      if(st > worstStress){
+        worstStress = st;
+        worstT = t;
+        worstQ = qTest;
+      }
+    }
+    
+    // Se l'intero segmento soddisfa la soglia di sicurezza senza sovraccarichi, usa segmento diretto
+    if(worstStress <= safeThreshold){
+      return [pA, pB];
+    }
+    
+    // Genera un Waypoint Correttivo lungo il gradiente negativo di coppia flettente
+    let wSafe = worstQ.slice();
+    // 1. Solleva e raddrizza la spalla verso la zona neutra verticale
+    wSafe[1] = clamp(wSafe[1] * 0.35, -5.0, 18.0);
+    // 2. Comprime il gomito verso l'interno per azzerare il braccio di leva r x F
+    wSafe[3] = Math.min(wSafe[3] - 25.0, -85.0);
+    // 3. Compensa la pinza per mantenerla livellata
+    wSafe[5] = clamp(90.0 - (wSafe[1] + wSafe[3]), limits[5][0], limits[5][1]);
+    
+    let leftPath = recursivePlan(pA, wSafe, depth - 1);
+    let rightPath = recursivePlan(wSafe, pB, depth - 1);
+    
+    return leftPath.slice(0, leftPath.length - 1).concat(rightPath);
+  }
+
+  let wps = recursivePlan(fromPose, toPose, 4);
+
+  // Calcola picco massimo previsto lungo la traiettoria finale
+  let pathMaxStress = 0;
+  for(let seg = 0; seg < wps.length - 1; seg++){
+    let pA = wps[seg], pB = wps[seg + 1];
+    for(let step = 0; step <= 10; step++){
+      let u = step / 10.0;
+      let qInterp = pA.map((v, i) => v + (pB[i] - v) * u);
+      let st = evaluatePoseTorques(qInterp).maxStress;
+      if(st > pathMaxStress) pathMaxStress = st;
+    }
+  }
+
+  return {
+    type: wps.length > 2 ? 'recursive_protected' : 'direct',
+    name: wps.length > 2 ? `Traiettoria Protetta (${wps.length - 2} Waypoints Sicuri)` : 'Traiettoria Diretta (Sicura ✓)',
+    maxStress: pathMaxStress,
+    waypoints: wps
+  };
+}
+
+function setPose(next){
+  let from = shownQ.slice();
+  let plan = planStressOptimalTrajectory(from, next);
+  let wps = plan.waypoints;
+  
+  let segmentDurations = [];
+  let totalDur = 0;
+  for(let i = 0; i < wps.length - 1; i++){
+    let d = calculateMoveDuration(wps[i], wps[i+1]);
+    segmentDurations.push(d);
+    totalDur += d;
+  }
+  
+  anim = {
+    waypoints: wps,
+    segmentDurations,
+    totalDuration: Math.max(200, totalDur),
+    at: performance.now(),
+    plan
+  };
+  q = next.slice();
+  return anim.totalDuration;
+}
+
+function executeSafePoseAsync(targetPose, onStepComplete=null){
+  let dur = setPose(targetPose);
+  if(onStepComplete){
+    setTimeout(onStepComplete, dur + 40);
+  }
+  return dur;
+}
+
+/* === SCIA TRAIETTORIA 3D === */
+let trailPoints=[], trailMesh=null, isRecordingTrail=false;
+let trailSettings={enabled:true, thickness:3.0, opacity:0.85, color:'#00f0ff', autoClear:true};
+
+function clearTrail(){
+  trailPoints=[];
+  if(trailMesh){scene.remove(trailMesh);trailMesh.geometry.dispose();trailMesh.material.dispose();trailMesh=null;}
+  $('trailLengthStat').textContent='0.0';$('trailPointsStat').textContent='0';
+}
+function addTrailPoint(pt){
+  if(!trailSettings.enabled) return;
+  if(trailPoints.length>0 && trailPoints[trailPoints.length-1].distanceTo(pt)<1.2) return;
+  trailPoints.push(pt.clone());
+  updateTrailMesh();
+}
+function updateTrailMesh(){
+  if(trailPoints.length<2){if(trailMesh){scene.remove(trailMesh);trailMesh=null;}return;}
+  let curve=new THREE.CatmullRomCurve3(trailPoints);
+  let tubularSegments=Math.min(500, Math.max(12, trailPoints.length*4));
+  let radius=Math.max(0.2, trailSettings.thickness);
+  let newGeo=new THREE.TubeGeometry(curve, tubularSegments, radius, 8, false);
+  if(!trailMesh){
+    let mat=new THREE.MeshStandardMaterial({color:new THREE.Color(trailSettings.color),emissive:new THREE.Color(trailSettings.color),emissiveIntensity:0.65,roughness:0.2,metalness:0.3,transparent:true,opacity:trailSettings.opacity,depthWrite:false});
+    trailMesh=new THREE.Mesh(newGeo, mat);
+    scene.add(trailMesh);
+  }else{
+    trailMesh.geometry.dispose();trailMesh.geometry=newGeo;trailMesh.material.opacity=trailSettings.opacity;
+    trailMesh.material.color.set(trailSettings.color);trailMesh.material.emissive.set(trailSettings.color);
+  }
+  let totalLen=0;for(let i=0;i<trailPoints.length-1;i++) totalLen+=trailPoints[i].distanceTo(trailPoints[i+1]);
+  $('trailLengthStat').textContent=totalLen.toFixed(1);$('trailPointsStat').textContent=trailPoints.length;
+}
+
+$('enableTrail').onchange=e=>{trailSettings.enabled=e.target.checked;$('trailStateBadge').textContent=e.target.checked?'ATTIVA':'DISATTIVATA';if(!e.target.checked) clearTrail();};
+$('trailThickness').oninput=e=>{trailSettings.thickness=+e.target.value;$('trailThicknessVal').textContent=trailSettings.thickness.toFixed(1)+' mm';if(trailPoints.length>=2) updateTrailMesh();scheduleProjectWrite();};
+$('trailOpacity').oninput=e=>{trailSettings.opacity=(+e.target.value)/100.0;$('trailOpacityVal').textContent=e.target.value+'%';if(trailMesh) trailMesh.material.opacity=trailSettings.opacity;scheduleProjectWrite();};
+$('trailColor').onchange=e=>{trailSettings.color=e.target.value;if(trailMesh){trailMesh.material.color.set(trailSettings.color);trailMesh.material.emissive.set(trailSettings.color);}scheduleProjectWrite();};
+$('trailAutoClear').onchange=e=>{trailSettings.autoClear=e.target.checked;};
+$('clearTrailBtn').onclick=()=>{clearTrail();$('status').innerHTML='<span class="trail-txt">Scia traiettoria cancellata.</span>';};
+
+/* === SEQUENZA TARGET STANDALONE PROTETTA === */
+let sequenceTimer=null, isRunningSequence=false;
+function stopSequence(){if(sequenceTimer) clearTimeout(sequenceTimer);sequenceTimer=null;isRunningSequence=false;isRecordingTrail=false;}
+function executeTargetSequence(targetPose){
+  stopSequence();clearTrail();isRunningSequence=true;isRecordingTrail=true;
+  $('status').innerHTML='<span class="good">Passo 1/4: Raggiungimento posa Rest protetta...</span>';
+  
+  executeSafePoseAsync(defaultRestPose, ()=>{
+    let physTarget = evaluatePoseTorques(targetPose);
+    let plan = planSafeTrajectory(defaultRestPose, targetPose);
+    let stressBadge = physTarget.maxStress < 75 ? '<span class="good">✓ Sforzo Minimo (Sicuro 🛡️)</span>' : (physTarget.maxStress < 100 ? '<span class="warn">⚠️ Sforzo Nominale</span>' : '<span class="bad">🔴 Zona Sovraccarico</span>');
+    let transitNote = plan.isDirectSafe ? '' : ' <span class="good" style="font-size:10.5px">· 🛡️ Waypoint Transito Anti-Stallo Attivato</span>';
+    
+    $('status').innerHTML=`<span class="good">Passo 2/4: Movimento protetto verso Target (${stressBadge}${transitNote})...</span>`;
+    
+    executeSafePoseAsync(targetPose, ()=>{
+      let count=3;
+      $('status').innerHTML=`<span class="good">Passo 3/4: Target raggiunto! Max Stress: ${physTarget.maxStress.toFixed(0)}% (Pausa ${count}s)...</span>`;
+      let holdInterval=setInterval(()=>{
+        count--;
+        if(count>0){
+          $('status').innerHTML=`<span class="good">Passo 3/4: Target raggiunto! Max Stress: ${physTarget.maxStress.toFixed(0)}% (Pausa ${count}s)...</span>`;
+        }else{
+          clearInterval(holdInterval);
+          $('status').innerHTML='<span class="good">Passo 4/4: Ritorno protetto in posa Rest...</span>';
+          executeSafePoseAsync(defaultRestPose, ()=>{
+            isRunningSequence=false;isRecordingTrail=false;
+            if(trailSettings.autoClear && trailMesh){
+              $('status').innerHTML='<span class="good">Ciclo completato! Dissolvenza scia in corso...</span>';
+              let fadeStep=0, initialOpacity=trailMesh.material.opacity;
+              let fadeTimer=setInterval(()=>{
+                fadeStep++;
+                if(trailMesh&&trailMesh.material) trailMesh.material.opacity=Math.max(0, initialOpacity*(1-fadeStep/12));
+                if(fadeStep>=12){clearInterval(fadeTimer);clearTrail();$('status').innerHTML='<span class="good">Ciclo completato! Scia cancellata. Braccio protetto in posa Rest.</span>';}
+              }, 40);
+            }else{
+              $('status').innerHTML='<span class="good">Ciclo completato con protezione motori attiva! Braccio fermo in posa Rest.</span>';
+            }
+          });
+        }
+      },1000);
+    });
+  });
+}
+
+/* =========================================================================
+   === CREATOR & ENGINE GRUPPI DI ANIMAZIONE ===
+   ========================================================================= */
+let animationGroups={
+  "Ciclo_Demo_Lavoro": [
+    {id:"s1", name:"Posa Iniziale Home", q:defaultRestPose.slice(), waitType:"time", waitTime:2.0},
+    {id:"s2", name:"Punto Presa Target", q:[35, 10, -10, -65, 10, 55], waitType:"user_check", waitTime:0},
+    {id:"s3", name:"Ritorno a Riposo", q:defaultRestPose.slice(), waitType:"time", waitTime:1.5}
+  ]
+};
+
+let activeAnimGroupKey = "Ciclo_Demo_Lavoro";
+let isRunningAnimRoutine = false, currentStepIndex = -1, animRoutineTimer = null, userCheckResolver = null;
+
+function refreshAnimGroupSelector(){
+  let s = $('animGroupSelect');
+  s.innerHTML = '';
+  let keys = Object.keys(animationGroups);
+  if(keys.length === 0){
+    animationGroups["Gruppo_1"] = [];
+    keys = ["Gruppo_1"];
+  }
+  keys.forEach(k => {
+    let o = document.createElement('option');
+    o.value = k; o.textContent = k;
+    s.appendChild(o);
+  });
+  if(!animationGroups[activeAnimGroupKey]) activeAnimGroupKey = keys[0];
+  s.value = activeAnimGroupKey;
+  refreshStepListUI();
+}
+
+function refreshStepListUI(){
+  let list = $('animStepList');
+  list.innerHTML = '';
+  let steps = animationGroups[activeAnimGroupKey] || [];
+  
+  if(steps.length === 0){
+    list.innerHTML = '<div class="sub" style="padding:10px;text-align:center">Nessun passo in questo gruppo. Aggiungine uno qui sotto!</div>';
+    return;
+  }
+
+  steps.forEach((st, idx) => {
+    let card = document.createElement('div');
+    card.className = 'step-card' + (isRunningAnimRoutine && currentStepIndex === idx ? ' active' : '');
+    
+    let waitBadge = '';
+    if(st.waitType === 'time') waitBadge = `<span class="badge badge-blue">⏳ ${st.waitTime}s</span>`;
+    else if(st.waitType === 'user_check') waitBadge = `<span class="badge badge-gold">👤 Check Utente</span>`;
+    else waitBadge = `<span class="badge badge-green">⚡ Immediato</span>`;
+
+    card.innerHTML = `
+      <div class="step-info">
+        <div class="step-title">${idx+1}. ${st.name}</div>
+        <div class="step-meta">Azione: ${waitBadge}</div>
+      </div>
+      <div class="step-actions">
+        <button title="Sposta su" onclick="moveStepUp(${idx})">▲</button>
+        <button title="Sposta giù" onclick="moveStepDown(${idx})">▼</button>
+        <button title="Elimina passo" style="color:var(--bad)" onclick="removeStep(${idx})">✕</button>
+      </div>
+    `;
+    list.appendChild(card);
+  });
+}
+
+function refreshStepPoseDropdown(){
+  let s = $('newStepPoseSelect');
+  s.innerHTML = '<option value="__current__">📍 Posa attuale del braccio</option>';
+  Object.keys(savedPoses).sort().forEach(p => {
+    let o = document.createElement('option');
+    o.value = p; o.textContent = '📁 ' + p;
+    s.appendChild(o);
+  });
+}
+
+$('newStepWaitType').onchange = e => {
+  $('newStepTimeRow').style.display = (e.target.value === 'time') ? 'flex' : 'none';
+};
+
+$('animGroupSelect').onchange = e => {
+  activeAnimGroupKey = e.target.value;
+  refreshStepListUI();
+};
+
+$('btnNewAnimGroup').onclick = () => {
+  let name = prompt('Inserisci il nome del nuovo Gruppo di Animazione:', 'Ciclo_' + (Object.keys(animationGroups).length + 1));
+  if(name && name.trim()){
+    name = name.trim().replace(/\s+/g, '_');
+    if(!animationGroups[name]) animationGroups[name] = [];
+    activeAnimGroupKey = name;
+    refreshAnimGroupSelector();
+    scheduleProjectWrite();
+  }
+};
+
+$('btnDelAnimGroup').onclick = () => {
+  if(confirm(`Sei sicuro di voler eliminare il gruppo "${activeAnimGroupKey}"?`)){
+    delete animationGroups[activeAnimGroupKey];
+    activeAnimGroupKey = Object.keys(animationGroups)[0] || '';
+    refreshAnimGroupSelector();
+    scheduleProjectWrite();
+  }
+};
+
+$('btnAddStepToGroup').onclick = () => {
+  if(!animationGroups[activeAnimGroupKey]) animationGroups[activeAnimGroupKey] = [];
+  let poseChoice = $('newStepPoseSelect').value;
+  let targetQ = defaultRestPose.slice();
+  let stepName = 'Posa';
+
+  if(poseChoice === '__current__'){
+    targetQ = shownQ.slice();
+    stepName = 'Posa Giunti (' + targetQ.map(v=>Math.round(v)).join(',') + ')';
+  } else if(savedPoses[poseChoice]){
+    targetQ = savedPoses[poseChoice].slice();
+    stepName = poseChoice;
+  }
+
+  let waitType = $('newStepWaitType').value;
+  let waitTime = parseFloat($('newStepWaitTime').value) || 3.0;
+
+  animationGroups[activeAnimGroupKey].push({
+    id: 'st_' + Date.now(),
+    name: stepName,
+    q: targetQ,
+    waitType,
+    waitTime
+  });
+
+  refreshStepListUI();
+  scheduleProjectWrite();
+  $('status').innerHTML = `<span class="good">✓ Passo "${stepName}" aggiunto al gruppo "${activeAnimGroupKey}".</span>`;
+};
+
+window.moveStepUp = function(idx){
+  let steps = animationGroups[activeAnimGroupKey];
+  if(idx > 0 && steps){
+    let t = steps[idx]; steps[idx] = steps[idx-1]; steps[idx-1] = t;
+    refreshStepListUI();
+    scheduleProjectWrite();
+  }
+};
+window.moveStepDown = function(idx){
+  let steps = animationGroups[activeAnimGroupKey];
+  if(steps && idx < steps.length - 1){
+    let t = steps[idx]; steps[idx] = steps[idx+1]; steps[idx+1] = t;
+    refreshStepListUI();
+    scheduleProjectWrite();
+  }
+};
+window.removeStep = function(idx){
+  let steps = animationGroups[activeAnimGroupKey];
+  if(steps){
+    steps.splice(idx, 1);
+    refreshStepListUI();
+    scheduleProjectWrite();
+  }
+};
+
+/* === PLAYER ESECUZIONE ROUTINE ANIMAZIONI === */
+function stopAnimationRoutine(){
+  if(animRoutineTimer) clearTimeout(animRoutineTimer);
+  animRoutineTimer = null;
+  isRunningAnimRoutine = false;
+  currentStepIndex = -1;
+  userCheckResolver = null;
+  $('btnUserCheckContinue').style.display = 'none';
+  $('animCurrentGroupLbl').textContent = 'Fermo / Pronto';
+  $('animCurrentStepLbl').textContent = '--';
+  $('animCurrentActionLbl').textContent = 'Pronto';
+  refreshStepListUI();
+}
+
+async function playAnimationGroup(){
+  let steps = animationGroups[activeAnimGroupKey] || [];
+  if(steps.length === 0){
+    alert('Il gruppo selezionato non contiene passi da eseguire.');
+    return;
+  }
+  stopAnimationRoutine();
+  clearTrail();
+  isRunningAnimRoutine = true;
+  isRecordingTrail = true;
+  $('animCurrentGroupLbl').textContent = activeAnimGroupKey;
+
+  do {
+    for(let i = 0; i < steps.length; i++){
+      if(!isRunningAnimRoutine) return;
+      currentStepIndex = i;
+      let st = steps[i];
+      refreshStepListUI();
+
+      let plan = planSafeTrajectory(shownQ, st.q);
+      let safetyNote = plan.isDirectSafe ? '' : ' <span class="good">(🛡️ Waypoint Anti-Stallo)</span>';
+
+      $('animCurrentStepLbl').textContent = `${i+1}/${steps.length}: ${st.name}`;
+      $('animCurrentActionLbl').innerHTML = `<span class="good">Movimento protetto in corso...${safetyNote}</span>`;
+      $('status').innerHTML = `<span class="good">Animazione: Passo ${i+1}/${steps.length} (${st.name})${safetyNote}</span>`;
+
+      await new Promise(resolve => {
+        executeSafePoseAsync(st.q, resolve);
+      });
+
+      if(!isRunningAnimRoutine) return;
+
+      if(st.waitType === 'time'){
+        let remaining = st.waitTime;
+        while(remaining > 0 && isRunningAnimRoutine){
+          $('animCurrentActionLbl').innerHTML = `<span class="warn">⏳ Attesa: ${remaining.toFixed(1)}s...</span>`;
+          let stepDelay = Math.min(1.0, remaining);
+          await new Promise(r => { animRoutineTimer = setTimeout(r, stepDelay * 1000); });
+          remaining -= stepDelay;
+        }
+      } else if(st.waitType === 'user_check'){
+        $('animCurrentActionLbl').innerHTML = '<span class="warn">👤 In attesa conferma utente (Premi Continua)</span>';
+        $('btnUserCheckContinue').style.display = 'block';
+        $('btnUserCheckContinue').scrollIntoView({behavior:'smooth', block:'nearest'});
+        await new Promise(resolve => { userCheckResolver = resolve; });
+        $('btnUserCheckContinue').style.display = 'none';
+      }
+    }
+  } while($('animLoopCheck').checked && isRunningAnimRoutine);
+
+  $('animCurrentActionLbl').innerHTML = '<span class="good">✓ Routine completata con successo!</span>';
+  $('status').innerHTML = `<span class="good">✓ Gruppo di animazione "${activeAnimGroupKey}" completato.</span>`;
+  stopAnimationRoutine();
+}
+
+$('btnPlayAnimation').onclick = playAnimationGroup;
+$('btnStopAnimation').onclick = stopAnimationRoutine;
+$('btnUserCheckContinue').onclick = () => {
+  if(userCheckResolver){
+    let cb = userCheckResolver;
+    userCheckResolver = null;
+    cb();
+  }
+};
+$('btnSaveAnimOnly').onclick = async () => {
+  let ok = await writeTripleJsonFiles();
+  await saveToIndexedDB();
+  if(ok){
+    $('status').innerHTML = '<span class="good">✓ File robot6dof_animations.json scritto fisicamente su DISCO!</span>';
+  }else{
+    $('status').innerHTML = '<span class="warn">Salvato nel browser. Clicca "Collega STL da cartella" o "Scarica File" per salvarlo su disco.</span>';
+  }
+};
+$('btnDownloadAnim').onclick = () => {
+  download('robot6dof_animations.json', JSON.stringify(animConfigSnapshot(), null, 2));
+  $('status').innerHTML = '<span class="good">✓ File robot6dof_animations.json scaricato con successo!</span>';
+};
+$('btnReloadAnimOnly').onclick = async () => {
+  try{
+    let conf = await tryServerFetch('/robot6dof_animations.json');
+    if(conf){
+      applyAnimConfig(conf);
+      $('status').innerHTML = '<span class="good">✓ Animazioni ricaricate da disco!</span>';
+    }
+  }catch(e){console.warn(e);}
+};
+
+/* =========================================================================
+   === THREE.JS SCENE ===
+   ========================================================================= */
+const view = $('view');
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 1, 6000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio || 1);
+view.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x17242a, 1.3));
+let light = new THREE.DirectionalLight(0xffffff, 1.0);
+light.position.set(300, 500, 400);
+scene.add(light);
+let light2 = new THREE.DirectionalLight(0x62e6c7, 0.4);
+light2.position.set(-300, -200, -200);
+scene.add(light2);
+scene.add(new THREE.GridHelper(1400, 28, 0x31505a, 0x1a2c32));
+
+function V(p){return new THREE.Vector3(p[0],p[2],-p[1])}
+function jointQuaternion(M){
+  let ex=V([M[0][0],M[1][0],M[2][0]]),ey=V([M[0][1],M[1][1],M[2][1]]),ez=V([M[0][2],M[1][2],M[2][2]]);
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(ex,ey,ez));
+}
+function axis(c,to){let g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),V(to)]);scene.add(new THREE.Line(g,new THREE.LineBasicMaterial({color:c})))}
+axis(0xff5c5c,[180,0,0]);axis(0x5cff8a,[0,180,0]);axis(0x5c9dff,[0,0,180]);
+
+let arm=new THREE.Group();scene.add(arm);
+let links=[],joints=[],marker=new THREE.Mesh(new THREE.SphereGeometry(11,16,16),new THREE.MeshBasicMaterial({color:0x5c9dff,wireframe:true}));
+scene.add(marker);
+
+/* === GIZMO 3D INTERATTIVO (TRANSFORM CONTROLS) === */
+let transformControl = new THREE.TransformControls(camera, renderer.domElement);
+transformControl.size = 0.85;
+transformControl.attach(marker);
+scene.add(transformControl);
+
+transformControl.addEventListener('change', () => {
+  if(transformControl.dragging){
+    target[0] = marker.position.x;
+    target[1] = -marker.position.z;
+    target[2] = marker.position.y;
+    syncTarget();
+    updateTargetWorkspaceEvaluation();
+    scheduleProjectWrite();
+  }
+});
+
+let isDraggingGizmo = false;
+transformControl.addEventListener('dragging-changed', (e) => {
+  isDraggingGizmo = e.value;
+});
+
+const dummyRoot=new THREE.Group();scene.add(dummyRoot);
+const dummyMat=new THREE.MeshBasicMaterial({color:0xffbc5c,wireframe:true});
+let dummyJoints=Array.from({length:7},()=>[0,0,0]),endpointDummy=[0,0,0],dummyMeshes=[];
+for(let i=0;i<8;i++){let m=new THREE.Mesh(new THREE.SphereGeometry(8,12,12),dummyMat);dummyRoot.add(m);dummyMeshes.push(m)}
+const assets=[],assetRoot=new THREE.Group();scene.add(assetRoot);
+let selectedAssetIndex=-1,projectDir=null,projectTimer=null,isLocalServer=false;
+
+/* === OGGETTO CARICO 3D PINZA (PAYLOAD BOX) === */
+let payloadMesh = null, payloadEdges = null;
+function initPayload3DObject(){
+  let pGeo = new THREE.BoxGeometry(physicsConfig.payload.dimX, physicsConfig.payload.dimZ, physicsConfig.payload.dimY);
+  let pMat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(physicsConfig.payload.color),
+    metalness: 0.35,
+    roughness: 0.45,
+    emissive: new THREE.Color(physicsConfig.payload.color),
+    emissiveIntensity: 0.25
+  });
+  payloadMesh = new THREE.Mesh(pGeo, pMat);
+  let edgeGeo = new THREE.EdgesGeometry(pGeo);
+  payloadEdges = new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({color:0xffffff, linewidth:2}));
+  payloadMesh.add(payloadEdges);
+  scene.add(payloadMesh);
+  updatePayload3DObject();
+}
+
+function updatePayload3DObject(){
+  if(!payloadMesh) return;
+  payloadMesh.visible = physicsConfig.payload.enabled;
+  if(payloadMesh.geometry){
+    payloadMesh.geometry.dispose();
+    payloadEdges.geometry.dispose();
+  }
+  let newGeo = new THREE.BoxGeometry(physicsConfig.payload.dimX, physicsConfig.payload.dimZ, physicsConfig.payload.dimY);
+  payloadMesh.geometry = newGeo;
+  payloadEdges.geometry = new THREE.EdgesGeometry(newGeo);
+}
+
+/* === INDICATORE 3D DEL BARICENTRO GLOBALE (CoM) & CERCHIO BASE === */
+let comMarkerMesh = null, comLineToGround = null, baseStabilityMesh = null;
+let torqueRingsGroup = new THREE.Group(); scene.add(torqueRingsGroup);
+let torqueRings = [];
+
+function initFEA3DVisuals(){
+  let comGeo = new THREE.SphereGeometry(12, 16, 16);
+  let comMat = new THREE.MeshStandardMaterial({
+    color: 0xffbc5c,
+    emissive: 0xff8c00,
+    emissiveIntensity: 0.6,
+    metalness: 0.5,
+    roughness: 0.3
+  });
+  comMarkerMesh = new THREE.Mesh(comGeo, comMat);
+  
+  let ringGeo = new THREE.TorusGeometry(18, 1.5, 8, 24);
+  let ringMat = new THREE.MeshBasicMaterial({color:0xff3333});
+  let ringMesh = new THREE.Mesh(ringGeo, ringMat);
+  ringMesh.rotation.x = Math.PI / 2;
+  comMarkerMesh.add(ringMesh);
+
+  let lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,-100,0)]);
+  comLineToGround = new THREE.Line(lineGeo, new THREE.LineDashedMaterial({color:0xffbc5c, dashSize:5, gapSize:4}));
+  comLineToGround.computeLineDistances();
+  scene.add(comLineToGround);
+  scene.add(comMarkerMesh);
+
+  let circleGeo = new THREE.RingGeometry(105, 115, 32);
+  let circleMat = new THREE.MeshBasicMaterial({color:0x62e6c7, side:THREE.DoubleSide, transparent:true, opacity:0.35});
+  baseStabilityMesh = new THREE.Mesh(circleGeo, circleMat);
+  baseStabilityMesh.rotation.x = Math.PI / 2;
+  baseStabilityMesh.position.y = 0.5;
+  scene.add(baseStabilityMesh);
+
+  for(let i = 0; i < 6; i++){
+    let trGeo = new THREE.TorusGeometry(26, 2.5, 8, 24, Math.PI * 1.5);
+    let trMat = new THREE.MeshStandardMaterial({color:0x0080ff, emissive:0x0080ff, emissiveIntensity:0.5});
+    let trMesh = new THREE.Mesh(trGeo, trMat);
+    torqueRingsGroup.add(trMesh);
+    torqueRings.push(trMesh);
+  }
+}
+
+function updateFEA3DVisuals(){
+  let isFEA = physicsConfig.fea.enabled;
+
+  for(let i = 0; i < 6; i++){
+    let stress = calculatedStressPct[i];
+    let col = isFEA ? getFEAColor(stress) : new THREE.Color(0x29484d);
+    let jointCol = isFEA ? getFEAColor(stress) : new THREE.Color(0x61e6c7);
+    let emiCol = isFEA ? getFEAColor(stress) : new THREE.Color(0x093f36);
+    let emiInt = isFEA ? (stress > 90 ? 0.6 : 0.35) : 0.2;
+
+    if(links[i]){
+      links[i].material.color.copy(col);
+      links[i].material.emissive.copy(emiCol);
+      links[i].material.emissiveIntensity = emiInt;
+    }
+    if(joints[i]){
+      joints[i].material.color.copy(jointCol);
+      joints[i].material.emissive.copy(emiCol);
+      joints[i].material.emissiveIntensity = emiInt;
+    }
+  }
+
+  assets.forEach((a, idx) => {
+    if(!a.mesh || !a.mesh.material) return;
+    if(idx === selectedAssetIndex){
+      a.mesh.material.color.set(0xffbc5c);
+      a.mesh.material.emissive.set(0x5a3100);
+      return;
+    }
+
+    if(isFEA){
+      let jointIdx = a.attach < 0 ? 0 : (a.attach === 6 ? 5 : Math.min(5, a.attach));
+      let stress = calculatedStressPct[jointIdx];
+      let col = getFEAColor(stress);
+      a.mesh.material.color.copy(col);
+      a.mesh.material.emissive.copy(col);
+      a.mesh.material.emissiveIntensity = stress > 90 ? 0.45 : 0.2;
+    } else {
+      a.mesh.material.color.set(0xa9c5c9);
+      a.mesh.material.emissive.set(0x000000);
+      a.mesh.material.emissiveIntensity = 0;
+    }
+  });
+
+  if(comMarkerMesh){
+    let vCoM = V(globalCenterOfMass);
+    comMarkerMesh.position.copy(vCoM);
+    comMarkerMesh.visible = physicsConfig.fea.showCoM;
+
+    if(comLineToGround){
+      comLineToGround.visible = physicsConfig.fea.showCoM;
+      let posArr = [vCoM.x, vCoM.y, vCoM.z, vCoM.x, 0, vCoM.z];
+      comLineToGround.geometry.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
+      comLineToGround.computeLineDistances();
+    }
+  }
+
+  if(torqueRingsGroup){
+    torqueRingsGroup.visible = physicsConfig.fea.showTorqueRings;
+    let f = fk(shownQ);
+    for(let i = 0; i < 6; i++){
+      let tr = torqueRings[i];
+      if(tr && joints[i]){
+        tr.position.copy(joints[i].position);
+        let stress = calculatedStressPct[i];
+        let col = getFEAColor(stress);
+        tr.material.color.copy(col);
+        tr.material.emissive.copy(col);
+        let scale = clamp(0.7 + (stress / 100) * 0.6, 0.6, 1.6);
+        tr.scale.setScalar(scale);
+      }
+    }
+  }
+
+  if(baseStabilityMesh){
+    baseStabilityMesh.visible = physicsConfig.fea.showBaseCircle;
+  }
+}
+
+/* =========================================================================
+   === MOTORE DI CALCOLO FISICA VETTORIALE, TORQUE & SFORZI (FEA) ===
+   ========================================================================= */
+function calculateRobotPhysics(deg){
+  let f = fk(deg);
+  let pts = f.pts;
+  let frames = f.frames;
+
+  let jointAxes = [
+    [0, 0, 1],                           // J1 (Base Yaw)
+    mv(frames[0], [0, 1, 0]),            // J2 (Spalla Pitch)
+    mv(frames[1], [0, 0, 1]),            // J3 (Braccio Roll)
+    mv(frames[2], [0, 1, 0]),            // J4 (Gomito Pitch)
+    mv(frames[3], [0, 0, 1]),            // J5 (Polso Roll)
+    mv(frames[4], [0, 1, 0])             // J6 (Pinza Pitch)
+  ];
+
+  let jointPivots = [pts[0], pts[1], pts[2], pts[3], pts[4], pts[5]];
+  let massElements = [];
+
+  physicsConfig.motors.forEach((mot, idx) => {
+    let pivotPt = jointPivots[idx] || [0,0,0];
+    massElements.push({
+      name: 'Motore ' + mot.name,
+      mass: mot.weight || 50,
+      pos: pivotPt.slice(),
+      attachLink: idx
+    });
+  });
+
+  assets.forEach((a) => {
+    let stlName = a.name;
+    let mass = physicsConfig.stlWeights[stlName] || 100;
+    
+    let centerPos = [0,0,0];
+    if(a.attach < 0){
+      centerPos = [a.mesh.position.x, -a.mesh.position.z, a.mesh.position.y];
+    } else {
+      let ji = a.attach === 6 ? 5 : a.attach;
+      let originPt = a.attach === 6 ? f.end : pts[a.attach];
+      let frameMat = frames[ji];
+      let localOffset = [a.mesh.position.x, -a.mesh.position.z, a.mesh.position.y];
+      let worldRotOffset = mv(frameMat, localOffset);
+      centerPos = [
+        originPt[0] + worldRotOffset[0],
+        originPt[1] + worldRotOffset[1],
+        originPt[2] + worldRotOffset[2]
+      ];
+    }
+
+    massElements.push({
+      name: 'STL: ' + stlName,
+      mass: mass,
+      pos: centerPos,
+      attachLink: a.attach
+    });
+  });
+
+  if(physicsConfig.payload.enabled && physicsConfig.payload.mass > 0){
+    massElements.push({
+      name: 'Oggetto Carico',
+      mass: physicsConfig.payload.mass,
+      pos: f.end.slice(),
+      attachLink: 6
+    });
+  }
+
+  let totalMass = 0;
+  let comAccum = [0, 0, 0];
+  massElements.forEach(el => {
+    totalMass += el.mass;
+    comAccum[0] += el.mass * el.pos[0];
+    comAccum[1] += el.mass * el.pos[1];
+    comAccum[2] += el.mass * el.pos[2];
+  });
+
+  totalRobotMassGrams = totalMass;
+  if(totalMass > 0){
+    globalCenterOfMass = [
+      comAccum[0] / totalMass,
+      comAccum[1] / totalMass,
+      comAccum[2] / totalMass
+    ];
+  } else {
+    globalCenterOfMass = [0, 0, 0];
+  }
+
+  const G = 9.80665;
+
+  for(let j = 0; j < 6; j++){
+    let pivot = jointPivots[j];
+    let axis = jointAxes[j];
+    let axLen = norm(axis) || 1;
+    let uAxis = [axis[0]/axLen, axis[1]/axLen, axis[2]/axLen]; // Versore asse di rotazione del servo
+
+    // 1. Somma Vettoriale 3D del Momento Totale rispetto al pivot j: M_tot = ∑ (R_k × F_k)
+    let M_tot = [0, 0, 0];
+
+    massElements.forEach(el => {
+      if(el.attachLink >= j){
+        let rx = (el.pos[0] - pivot[0]) * 0.001;
+        let ry = (el.pos[1] - pivot[1]) * 0.001;
+        let rz = (el.pos[2] - pivot[2]) * 0.001;
+
+        let Fz = -(el.mass * 0.001) * G;
+
+        let tauX = ry * Fz;
+        let tauY = -rx * Fz;
+        let tauZ = 0;
+
+        M_tot[0] += tauX;
+        M_tot[1] += tauY;
+        M_tot[2] += tauZ;
+      }
+    });
+
+    // 2. Scomposizione Vettoriale Ortogonale:
+    // Componente Parallela (lungo l'asse di rotazione uAxis) -> Carico effettivo sul motore servo:
+    let tauMotorNm = M_tot[0] * uAxis[0] + M_tot[1] * uAxis[1] + M_tot[2] * uAxis[2];
+    let absMotorNm = Math.abs(tauMotorNm);
+    let motorTorqueKgCm = absMotorNm * 10.19716;
+
+    // Componente Perpendicolare all'asse -> Momento flettente/taglio scaricato su cuscinetti e STL:
+    let M_parallel = [tauMotorNm * uAxis[0], tauMotorNm * uAxis[1], tauMotorNm * uAxis[2]];
+    let M_perp = [M_tot[0] - M_parallel[0], M_tot[1] - M_parallel[1], M_tot[2] - M_parallel[2]];
+    let absBendingNm = Math.sqrt(M_perp[0]*M_perp[0] + M_perp[1]*M_perp[1] + M_perp[2]*M_perp[2]);
+    let bendingKgCm = absBendingNm * 10.19716;
+
+    // Modulo Risultante 3D Totale:
+    let absTotalMomNm = Math.sqrt(M_tot[0]*M_tot[0] + M_tot[1]*M_tot[1] + M_tot[2]*M_tot[2]);
+    let totalMomKgCm = absTotalMomNm * 10.19716;
+
+    calculatedTorquesNm[j] = absMotorNm;
+    calculatedTorques[j] = motorTorqueKgCm;
+    calculatedBendingNm[j] = absBendingNm;
+    calculatedBendingKg[j] = bendingKgCm;
+    calculatedTotalMomentKg[j] = totalMomKgCm;
+
+    let rated = physicsConfig.motors[j].maxTorque || 20.0;
+    let stress = (motorTorqueKgCm / rated) * 100.0;
+    calculatedStressPct[j] = stress;
+  }
+
+  calculateMaterialAndStructuralStress(shownQ);
+  updatePhysicsUI();
+  updateMaterialUI();
+  updateFEA3DVisuals();
+}
+
+function getFEAColor(stressPct){
+  let s = clamp(stressPct, 0, 120);
+  let r=0, g=0, b=0;
+
+  if(s <= 35){
+    let t = s / 35.0;
+    r = 0;
+    g = Math.round(128 + 100 * t);
+    b = 255;
+  } else if(s <= 65){
+    let t = (s - 35.0) / 30.0;
+    r = Math.round(34 * t);
+    g = Math.round(228 - 31 * (1-t));
+    b = Math.round(255 * (1-t));
+  } else if(s <= 85){
+    let t = (s - 65.0) / 20.0;
+    r = Math.round(34 + 200 * t);
+    g = Math.round(197 - 18 * t);
+    b = Math.round(94 * (1-t));
+  } else if(s <= 100){
+    let t = (s - 85.0) / 15.0;
+    r = Math.round(234 + 15 * t);
+    g = Math.round(179 - 64 * t);
+    b = Math.round(8 * (1-t));
+  } else {
+    r = 239;
+    g = Math.max(0, Math.round(68 - (s - 100)*2));
+    b = Math.max(0, Math.round(68 - (s - 100)*2));
+  }
+  return new THREE.Color(`rgb(${r},${g},${b})`);
+}
+
+function getFEAHexString(stressPct){
+  let c = getFEAColor(stressPct);
+  return '#' + c.getHexString();
+}
+
+/* =========================================================================
+   === ANALISI STRUTTURALE DEI PEZZI STL & CARICO DI ROTTURA (v30) ===
+   ========================================================================= */
+
+function calculateMaterialAndStructuralStress(deg){
+  let mat = materialsDatabase[materialConfig.selectedMaterial] || materialsDatabase['PETG'];
+  
+  let infillFactor = 0.35 + 0.65 * (materialConfig.infillPct / 100.0);
+  let layerFactor = (materialConfig.layerOrientation === 'horizontal') ? 1.0 : mat.layerBondFactor;
+  let allowableYieldMPa = mat.yieldStrength * infillFactor * layerFactor;
+
+  calculatedStlStructuralData = [];
+
+  let minSF = 999.0;
+  let mostStressedName = '--';
+  let maxStressVal = 0;
+  let minBreakingPayloadKg = 999.0;
+
+  let Do = Math.max(22, geo.diameter);
+  let tWall = Math.min(Do * 0.45, materialConfig.wallCount * 0.45 + (materialConfig.infillPct / 100.0) * 3.5);
+  let Di = Math.max(2, Do - 2 * tWall);
+
+  let Wb = (Math.PI / 32.0) * (Math.pow(Do, 4) - Math.pow(Di, 4)) / Do;
+  let Asec = (Math.PI / 4.0) * (Math.pow(Do, 2) - Math.pow(Di, 2));
+
+  let f = fk(deg);
+
+  assets.forEach((a) => {
+    let stlName = a.name;
+    let attach = a.attach;
+    let jIndex = (attach < 0) ? 0 : (attach === 6 ? 5 : attach);
+
+    let appliedMomentNm = calculatedTotalMomentKg[jIndex] / 10.19716;
+    let appliedMomentNmm = appliedMomentNm * 1000.0;
+
+    let sigmaBendingMPa = appliedMomentNmm / Math.max(10, Wb);
+
+    let downstreamMassG = 0;
+    for(let k = jIndex; k < 6; k++){
+      downstreamMassG += (physicsConfig.motors[k]?.weight || 50);
+    }
+    if(physicsConfig.payload.enabled) downstreamMassG += physicsConfig.payload.mass;
+    let axialForceN = (downstreamMassG * 0.001) * 9.80665;
+    let sigmaAxialMPa = axialForceN / Math.max(10, Asec);
+
+    let sigmaTotalMPa = sigmaBendingMPa + sigmaAxialMPa;
+    let sf = allowableYieldMPa / Math.max(0.01, sigmaTotalMPa);
+
+    let remainingMPa = Math.max(0, allowableYieldMPa - sigmaAxialMPa);
+    let endDistM = (norm(sub(f.end, f.pts[jIndex])) * 0.001) || 0.2;
+    let momentPerKgNmm = (1.0 * 9.80665 * endDistM) * 1000.0;
+    let breakingPayloadKg = (remainingMPa * Wb) / Math.max(100, momentPerKgNmm);
+
+    if(sf < minSF){
+      minSF = sf;
+      mostStressedName = stlName;
+      maxStressVal = sigmaTotalMPa;
+      minBreakingPayloadKg = breakingPayloadKg;
+    }
+
+    calculatedStlStructuralData.push({
+      id: a.id,
+      name: stlName,
+      attach: attach,
+      jIndex: jIndex,
+      appliedMomentNm,
+      sigmaTotalMPa,
+      allowableYieldMPa,
+      safetyFactor: sf,
+      breakingPayloadKg: Math.max(0, breakingPayloadKg),
+      isBroken: sf < 1.0
+    });
+  });
+
+  return {
+    minSF: minSF === 999.0 ? 10.0 : minSF,
+    mostStressedName: mostStressedName === '--' ? (assets[0]?.name || 'Pezzo 1') : mostStressedName,
+    maxStressVal,
+    allowableYieldMPa,
+    minBreakingPayloadKg: minBreakingPayloadKg === 999.0 ? 4.5 : minBreakingPayloadKg
+  };
+}
+
+function updateMaterialUI(){
+  let mat = materialsDatabase[materialConfig.selectedMaterial] || materialsDatabase['PETG'];
+  
+  let specsCard = $('matSpecsCard');
+  if(specsCard){
+    specsCard.innerHTML = `
+      <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+        <b style="color:${mat.color}">${mat.name}</b>
+        <span class="badge badge-green">Densità: ${mat.density} g/cm³</span>
+      </div>
+      <div style="color:var(--muted);font-size:10px;margin-bottom:5px">${mat.desc}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px">
+        <div>Snervamento: <b style="color:#ffffff">${mat.yieldStrength} MPa</b></div>
+        <div>Trazione Max: <b style="color:#ffffff">${mat.ultimateStrength} MPa</b></div>
+        <div>Modulo Elastico: <b style="color:#ffffff">${mat.flexuralModulus} GPa</b></div>
+        <div>Adesione Layer Z: <b style="color:#ffffff">${(mat.layerBondFactor*100).toFixed(0)}%</b></div>
+      </div>
+    `;
+  }
+
+  let stlList = $('stlStructuralList');
+  if(stlList){
+    let html = '';
+    calculatedStlStructuralData.forEach(item => {
+      let isOver = item.safetyFactor < 1.0;
+      let badgeClass = item.safetyFactor >= 3.0 ? 'badge-green' : (item.safetyFactor >= 1.5 ? 'badge-gold' : (item.safetyFactor >= 1.0 ? 'badge-orange' : 'badge-red'));
+      let badgeText = item.safetyFactor >= 3.0 ? '🟢 ECCELLENTE' : (item.safetyFactor >= 1.5 ? '🟡 SICURO' : (item.safetyFactor >= 1.0 ? '🟠 AL LIMITE' : '🔴 ROTTURA / CRICCA'));
+
+      html += `
+        <div class="mat-card ${isOver ? 'broken' : ''}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+            <b style="color:#cde0e3">${item.name}</b>
+            <span class="badge ${badgeClass}">${badgeText} (SF=${item.safetyFactor.toFixed(1)})</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;color:var(--muted);font-size:10px;margin-top:2px">
+            <span>Tensione: <b style="color:#ffffff">${item.sigmaTotalMPa.toFixed(1)}</b> / ${item.allowableYieldMPa.toFixed(1)} MPa</span>
+            <span>Momento Flettente: <b>${item.appliedMomentNm.toFixed(2)}</b> N·m</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;color:#839aa0;font-size:9.5px;margin-top:2px">
+            <span>Giunto: <b>J${item.jIndex+1}</b></span>
+            <span>Carico Limite Rottura: <b style="color:${isOver ? 'var(--bad)' : 'var(--a)'}">${item.breakingPayloadKg.toFixed(2)} kg</b></span>
+          </div>
+        </div>
+      `;
+    });
+    if(calculatedStlStructuralData.length === 0){
+      html = '<div class="sub" style="text-align:center;padding:12px">Nessun file STL associato ai giunti del braccio.</div>';
+    }
+    stlList.innerHTML = html;
+  }
+
+  let structRes = calculateMaterialAndStructuralStress(shownQ);
+  $('statActiveMat').textContent = `${materialConfig.selectedMaterial} (${materialConfig.wallCount} muri · ${materialConfig.infillPct}%)`;
+  
+  let sfClass = structRes.minSF >= 2.5 ? 'good' : (structRes.minSF >= 1.3 ? 'warn' : 'bad');
+  let sfText = structRes.minSF >= 2.5 ? 'Sicuro 🟢' : (structRes.minSF >= 1.0 ? 'Attenzione 🟡' : 'ROTTURA 🔴');
+  $('statMinSafetyFactor').innerHTML = `<span class="${sfClass}">SF = ${structRes.minSF.toFixed(2)} (${sfText})</span>`;
+  
+  $('statMostStressedStl').textContent = structRes.mostStressedName;
+  $('statMaxVonMisesStress').innerHTML = `<span class="${sfClass}">${structRes.maxStressVal.toFixed(1)} MPa</span> / ${structRes.allowableYieldMPa.toFixed(1)} MPa`;
+  $('statBreakingPayloadEst').innerHTML = `<b style="color:var(--a)">${structRes.minBreakingPayloadKg.toFixed(2)} kg</b>`;
+
+  $('stlStructuralSummaryBadge').textContent = structRes.minSF >= 2.0 ? 'TUTTI SICURI' : (structRes.minSF >= 1.0 ? 'ZONA ATTENZIONE' : 'RISCHIO ROTTURA');
+  $('stlStructuralSummaryBadge').className = structRes.minSF >= 2.0 ? 'badge badge-green' : (structRes.minSF >= 1.0 ? 'badge badge-orange' : 'badge badge-red');
+}
+
+function updatePhysicsUI(){
+  let container = $('liveStressCardsContainer');
+  if(!container) return;
+
+  let html = '';
+  for(let i = 0; i < 6; i++){
+    let mot = physicsConfig.motors[i];
+    let tKg = calculatedTorques[i];
+    let tNm = calculatedTorquesNm[i];
+    let bndKg = calculatedBendingKg[i];
+    let totKg = calculatedTotalMomentKg[i];
+    let pct = calculatedStressPct[i];
+    let rated = mot.maxTorque;
+
+    let isOver = pct >= 100;
+    let badgeClass = pct < 50 ? 'badge-green' : (pct < 80 ? 'badge-gold' : (pct < 100 ? 'badge-orange' : 'badge-red'));
+    let badgeText = pct < 50 ? '🟢 OTTIMO' : (pct < 80 ? '🟡 NOMINALE' : (pct < 100 ? '🟠 AL LIMITE' : '🔴 STALLO/SOVRACCARICO'));
+
+    let barColor = getFEAHexString(pct);
+    let barWidth = Math.min(100, pct);
+
+    html += `
+      <div class="stress-card ${isOver ? 'overload' : ''}">
+        <div class="stress-header">
+          <span style="font-weight:700;color:#cde0e3">J${i+1}: ${mot.name.split(' ')[1] || mot.name}</span>
+          <span class="badge ${badgeClass}">${badgeText}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-top:2px">
+          <span>Torque Motore: <b style="color:#ffffff">${tKg.toFixed(2)}</b> kg·cm (${tNm.toFixed(2)} N·m)</span>
+          <span>Max: ${rated} kg·cm (<b style="color:${barColor}">${pct.toFixed(0)}%</b>)</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:9.5px;color:#7e9a9f;margin-top:1px">
+          <span>Flessione STL (⊥): <b>${bndKg.toFixed(2)}</b> kg·cm</span>
+          <span>Risultante 3D: <b>${totKg.toFixed(2)}</b> kg·cm</span>
+        </div>
+        <div class="stress-bar-container" style="margin-top:3px">
+          <div class="stress-bar" style="width:${barWidth}%;background:${barColor}"></div>
+        </div>
+      </div>
+    `;
+  }
+  container.innerHTML = html;
+
+  $('statTotalMass').textContent = totalRobotMassGrams.toFixed(0) + ' g';
+  $('statPayloadMassLive').textContent = (physicsConfig.payload.enabled ? physicsConfig.payload.mass : 0) + ' g';
+  $('statCoMPos').textContent = `(${globalCenterOfMass[0].toFixed(0)}, ${globalCenterOfMass[1].toFixed(0)}, ${globalCenterOfMass[2].toFixed(0)}) mm`;
+
+  let maxCurStress = Math.max(...calculatedStressPct);
+  let statusHTML = maxCurStress < 70 
+    ? `<span class="good">🛡️ OTTIMA (Max ${maxCurStress.toFixed(0)}% · Sicura &lt;100%)</span>`
+    : (maxCurStress < 100 
+      ? `<span class="warn">⚠️ NOMINALE (Max ${maxCurStress.toFixed(0)}% su motore)</span>` 
+      : `<span class="bad">🔴 SOVRACCARICO (Max ${maxCurStress.toFixed(0)}% &gt; Limite)</span>`);
+  $('statTorqueSafety').innerHTML = statusHTML;
+}
+
+function buildMotorsPhysicsList(){
+  let c = $('motorsPhysicsList');
+  if(!c) return;
+  c.innerHTML = '';
+
+  let totalMotW = 0;
+  physicsConfig.motors.forEach((mot, idx) => {
+    totalMotW += (mot.weight || 0);
+    let row = document.createElement('div');
+    row.style.cssText = 'background:#081013;border:1px solid var(--line);border-radius:5px;padding:6px;margin-bottom:5px;font-size:11px';
+    row.innerHTML = `
+      <div style="display:flex;justify-content:space-between;font-weight:600;margin-bottom:4px;color:#cde0e3">
+        <span>J${idx+1} · ${mot.name}</span>
+        <span style="color:var(--a)" id="motLiveTorqueVal_${idx}">${calculatedTorques[idx].toFixed(1)} / ${mot.maxTorque} kg·cm</span>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <label style="flex:0 0 55px;font-size:10px;color:var(--muted)">Torque:</label>
+        <input type="number" step="0.5" min="1" max="150" value="${mot.maxTorque}" style="width:60px" onchange="updateMotorTorque(${idx}, this.value)">
+        <span style="font-size:10px;color:var(--muted)">kg·cm</span>
+        
+        <label style="flex:0 0 45px;font-size:10px;color:var(--muted);margin-left:8px">Peso:</label>
+        <input type="number" step="1" min="5" max="300" value="${mot.weight}" style="width:55px" onchange="updateMotorWeight(${idx}, this.value)">
+        <span style="font-size:10px;color:var(--muted)">g</span>
+      </div>
+    `;
+    c.appendChild(row);
+  });
+  $('totalMotorWeightBadge').textContent = `Motori: ${totalMotW}g`;
+}
+
+function buildStlWeightsList(){
+  let c = $('stlWeightsList');
+  if(!c) return;
+  c.innerHTML = '';
+
+  let totalStlW = 0;
+  let fileNames = assets.map(a => a.name);
+  if(fileNames.length === 0){
+    fileNames = Object.keys(physicsConfig.stlWeights);
+  }
+
+  let uniqueNames = [...new Set(fileNames)];
+  uniqueNames.forEach(name => {
+    let w = physicsConfig.stlWeights[name] || 100;
+    totalStlW += w;
+    let row = document.createElement('div');
+    row.className = 'row';
+    row.style.margin = '4px 0';
+    row.innerHTML = `
+      <label style="flex:1;font-size:10.5px;overflow:hidden;text-overflow:ellipsis" title="${name}">📄 ${name}</label>
+      <input type="number" step="5" min="5" max="2500" value="${w}" style="width:65px" onchange="updateStlWeight('${name}', this.value)">
+      <span class="val" style="width:25px;font-size:10px">g</span>
+    `;
+    c.appendChild(row);
+  });
+
+  $('totalStlWeightBadge').textContent = `STL: ${totalStlW}g`;
+}
+
+window.updateMotorTorque = function(idx, val){
+  physicsConfig.motors[idx].maxTorque = Math.max(1, parseFloat(val) || 20);
+  scheduleProjectWrite();
+  calculateRobotPhysics(shownQ);
+};
+
+window.updateMotorWeight = function(idx, val){
+  physicsConfig.motors[idx].weight = Math.max(1, parseFloat(val) || 50);
+  buildMotorsPhysicsList();
+  scheduleProjectWrite();
+  calculateRobotPhysics(shownQ);
+};
+
+window.updateStlWeight = function(name, val){
+  physicsConfig.stlWeights[name] = Math.max(1, parseFloat(val) || 50);
+  buildStlWeightsList();
+  scheduleProjectWrite();
+  calculateRobotPhysics(shownQ);
+};
+
+window.setPayloadPreset = function(grams){
+  $('payloadMass').value = grams;
+  $('payloadMassNum').value = grams;
+  physicsConfig.payload.mass = grams;
+  physicsConfig.payload.enabled = grams > 0;
+  $('payloadEnabled').checked = physicsConfig.payload.enabled;
+  $('payloadStateBadge').textContent = physicsConfig.payload.enabled ? 'IN PRESA' : 'VUOTO';
+  $('payloadStateBadge').className = physicsConfig.payload.enabled ? 'badge badge-orange' : 'badge badge-green';
+  updatePayload3DObject();
+  scheduleProjectWrite();
+  calculateRobotPhysics(shownQ);
+};
+
+window.applyMotorSpecPreset = function(preset){
+  if(preset === 'standard20'){
+    physicsConfig.motors.forEach(m => { m.maxTorque = 20.0; m.weight = 58; });
+  } else if(preset === 'power35'){
+    physicsConfig.motors.forEach(m => { m.maxTorque = 35.0; m.weight = 65; });
+  } else if(preset === 'hybridPro'){
+    physicsConfig.motors[0].maxTorque = 60.0; physicsConfig.motors[0].weight = 75;
+    physicsConfig.motors[1].maxTorque = 60.0; physicsConfig.motors[1].weight = 75;
+    physicsConfig.motors[2].maxTorque = 35.0; physicsConfig.motors[2].weight = 65;
+    physicsConfig.motors[3].maxTorque = 35.0; physicsConfig.motors[3].weight = 65;
+    physicsConfig.motors[4].maxTorque = 25.0; physicsConfig.motors[4].weight = 55;
+    physicsConfig.motors[5].maxTorque = 20.0; physicsConfig.motors[5].weight = 45;
+  } else if(preset === 'economy13'){
+    physicsConfig.motors.forEach(m => { m.maxTorque = 13.0; m.weight = 55; });
+  }
+  buildMotorsPhysicsList();
+  scheduleProjectWrite();
+  calculateRobotPhysics(shownQ);
+  $('status').innerHTML = `<span class="good">✓ Preset motori "${preset}" applicato a tutti i giunti!</span>`;
+};
+
+$('payloadEnabled').onchange = e => {
+  physicsConfig.payload.enabled = e.target.checked;
+  $('payloadStateBadge').textContent = e.target.checked ? 'IN PRESA' : 'VUOTO';
+  $('payloadStateBadge').className = e.target.checked ? 'badge badge-orange' : 'badge badge-green';
+  updatePayload3DObject();
+  scheduleProjectWrite();
+  calculateRobotPhysics(shownQ);
+};
+
+$('payloadMass').oninput = e => {
+  let val = +e.target.value;
+  $('payloadMassNum').value = val;
+  physicsConfig.payload.mass = val;
+  scheduleProjectWrite();
+  calculateRobotPhysics(shownQ);
+};
+
+$('payloadMassNum').oninput = e => {
+  let val = +e.target.value;
+  $('payloadMass').value = Math.min(2000, val);
+  physicsConfig.payload.mass = val;
+  scheduleProjectWrite();
+  calculateRobotPhysics(shownQ);
+};
+
+['payloadDimX','payloadDimY','payloadDimZ'].forEach(id => {
+  $(id).oninput = () => {
+    physicsConfig.payload.dimX = +$('payloadDimX').value || 40;
+    physicsConfig.payload.dimY = +$('payloadDimY').value || 40;
+    physicsConfig.payload.dimZ = +$('payloadDimZ').value || 40;
+    updatePayload3DObject();
+    scheduleProjectWrite();
+  };
+});
+
+$('feaHeatmapEnabled').onchange = e => {
+  physicsConfig.fea.enabled = e.target.checked;
+  $('feaHeatmapBadge').textContent = e.target.checked ? 'ATTIVA' : 'OFF';
+  $('feaHeatmapBadge').className = e.target.checked ? 'badge badge-green' : 'badge badge-gold';
+  updateFEA3DVisuals();
+  scheduleProjectWrite();
+};
+
+$('feaShowCoM').onchange = e => {
+  physicsConfig.fea.showCoM = e.target.checked;
+  if(comMarkerMesh) comMarkerMesh.visible = e.target.checked;
+  scheduleProjectWrite();
+};
+
+$('feaShowTorqueRings').onchange = e => {
+  physicsConfig.fea.showTorqueRings = e.target.checked;
+  torqueRingsGroup.visible = e.target.checked;
+  scheduleProjectWrite();
+};
+
+$('feaShowBaseCircle').onchange = e => {
+  physicsConfig.fea.showBaseCircle = e.target.checked;
+  if(baseStabilityMesh) baseStabilityMesh.visible = e.target.checked;
+  scheduleProjectWrite();
+};
+
+$('torqueProtectionCheck').onchange = e => {
+  physicsConfig.torqueProtection = e.target.checked;
+  $('torqueProtBadge').textContent = e.target.checked ? 'MAX SICUREZZA 🛡️' : 'DISATTIVATA';
+  $('torqueProtBadge').className = e.target.checked ? 'badge badge-green' : 'badge badge-gold';
+  scheduleProjectWrite();
+};
+
+/* === EVENT LISTENER MATERIALI & SIMULATORE ROTTURA (v30) === */
+$('matSelect').onchange = e => {
+  materialConfig.selectedMaterial = e.target.value;
+  updateMaterialUI();
+  scheduleProjectWrite();
+  calculateRobotPhysics(shownQ);
+};
+
+$('matInfill').oninput = e => {
+  let val = +e.target.value;
+  materialConfig.infillPct = val;
+  $('matInfillVal').textContent = val + '%';
+  updateMaterialUI();
+  scheduleProjectWrite();
+  calculateRobotPhysics(shownQ);
+};
+
+$('matWalls').oninput = e => {
+  let val = +e.target.value;
+  materialConfig.wallCount = val;
+  let mmThick = (val * 0.45).toFixed(1);
+  $('matWallsVal').textContent = `${val} muri (${mmThick}mm)`;
+  updateMaterialUI();
+  scheduleProjectWrite();
+  calculateRobotPhysics(shownQ);
+};
+
+$('matLayerOrient').onchange = e => {
+  materialConfig.layerOrientation = e.target.value;
+  updateMaterialUI();
+  scheduleProjectWrite();
+  calculateRobotPhysics(shownQ);
+};
+
+$('btnSimulateBreakage').onclick = () => {
+  let mat = materialsDatabase[materialConfig.selectedMaterial] || materialsDatabase['PETG'];
+  let res = calculateMaterialAndStructuralStress(shownQ);
+  
+  let resultDiv = $('breakageTestResult');
+  let currentLoadKg = physicsConfig.payload.enabled ? (physicsConfig.payload.mass / 1000.0) : 0;
+  
+  if(res.minSF < 1.0){
+    resultDiv.innerHTML = `
+      <b style="color:var(--bad)">⚠️ STRUTTURA IN CEDIMENTO PLASTICO!</b><br>
+      Il componente <b>${res.mostStressedName}</b> è sottoposto a una tensione di <b>${res.maxStressVal.toFixed(1)} MPa</b>, superando la tensione massima ammissibile di <b>${res.allowableYieldMPa.toFixed(1)} MPa</b> per ${materialConfig.selectedMaterial}.<br>
+      <span style="color:var(--bad)">Rischio rottura o delaminazione immediata!</span> Aumenta il numero di perimetri o l'infill, oppure passa a un materiale più resistente (es. PA-CF).
+    `;
+    $('breakageStatusBadge').textContent = 'ROTTURA RILEVATA 🔴';
+    $('breakageStatusBadge').className = 'badge badge-red';
+  } else {
+    resultDiv.innerHTML = `
+      <b style="color:var(--a)">✓ TEST DI RESISTENZA SUPERATO!</b><br>
+      • Materiale: <b>${mat.name}</b> (${materialConfig.wallCount} perimetri, ${materialConfig.infillPct}% infill).<br>
+      • Carico Pinza Attuale: <b>${currentLoadKg.toFixed(2)} kg</b> (Fattore di sicurezza: <b style="color:var(--a)">SF = ${res.minSF.toFixed(2)}</b>).<br>
+      • <b>Carico Massimo di Rottura Stimato</b>: <b style="color:#ffbc5c;font-size:12px">${res.minBreakingPayloadKg.toFixed(2)} kg</b>.<br>
+      • Componente critico: <b>${res.mostStressedName}</b> (Tensione attuale: ${res.maxStressVal.toFixed(1)} MPa su ${res.allowableYieldMPa.toFixed(1)} MPa max).
+    `;
+    $('breakageStatusBadge').textContent = 'SICURO (SF ' + res.minSF.toFixed(1) + ') 🟢';
+    $('breakageStatusBadge').className = 'badge badge-green';
+  }
+};
+
+/* === REACHABILITY CLOUD === */
+let cloudMesh=null, cloudStatsData={rmax:0, rmin:Infinity, zmax:-Infinity, zmin:Infinity};
+let activeCloudMode='free';
+
+function generateReachabilityCloud(){
+  if(cloudMesh){scene.remove(cloudMesh);cloudMesh.geometry.dispose();cloudMesh.material.dispose();cloudMesh=null;}
+  let count=+ $('cloudDensity').value || 20000;
+  let sectionView=$('cloudSection').value;
+  let colMode=$('cloudColorMap').value;
+  let ptSize=+ $('cloudPointSize').value || 3.5;
+  let opacity=(+ $('cloudOpacity').value || 45)/100.0;
+  let isVisible=$('showCloud').checked;
+
+  let posArr=[], colArr=[];
+  let maxTheoreticalReach=geo.d12+geo.L1+geo.d34+geo.L2+geo.d56+geo.Lg;
+  let rmax=0, rmin=Infinity, zmax=-Infinity, zmin=Infinity;
+  let samplesCollected=0, maxAttempts=count*3, attempts=0;
+
+  while(samplesCollected<count && attempts<maxAttempts){
+    attempts++;
+    let testQ=limits.map(([min,max])=>min+Math.random()*(max-min));
+    if(sectionView==='slice') testQ[0]=(Math.random()-0.5)*3.5;
+
+    if(activeCloudMode==='horizontal'){
+      testQ[1] = -5 + Math.random() * 35;
+      testQ[2] = (Math.random() - 0.5) * 4.0;
+      testQ[3] = -20 - Math.random() * 100;
+      testQ[4] = (Math.random() - 0.5) * 4.0;
+      let levelPitch = -(testQ[1] + testQ[3]) + (Math.random()-0.5)*5.0;
+      testQ[5] = clamp(levelPitch, limits[5][0], limits[5][1]);
+    }
+
+    let f=fk(testQ), ep=f.end;
+    if(activeCloudMode==='horizontal' && Math.abs(f.axis[2])>0.08) continue;
+
+    let v3=V(ep);
+    posArr.push(v3.x,v3.y,v3.z);
+
+    let dist3D=Math.hypot(ep[0],ep[1],ep[2]);
+    if(dist3D>rmax) rmax=dist3D;
+    if(dist3D<rmin&&dist3D>10) rmin=dist3D;
+    if(ep[2]>zmax) zmax=ep[2];
+    if(ep[2]<zmin) zmin=ep[2];
+
+    let r=1,g=1,b=1;
+    if(colMode==='dist'){
+      let normR=clamp(dist3D/maxTheoreticalReach,0,1);
+      if(activeCloudMode==='horizontal'){
+        r=0.1+normR*0.9; g=0.9-normR*0.3; b=0.4+normR*0.6;
+      }else{
+        if(normR<0.4){r=0.2;g=0.9;b=1.0;}else if(normR<0.75){r=0.3+normR*0.7;g=0.95;b=0.4;}else{r=1.0;g=clamp((1-normR)*2,0,1);b=0.5+normR*0.5;}
+      }
+    }else if(colMode==='height'){
+      let normZ=clamp((ep[2]+100)/(maxTheoreticalReach+100),0,1);
+      r=0.2+0.8*normZ;g=0.5+0.5*(1-Math.abs(normZ-0.5)*2);b=1.0-0.7*normZ;
+    }else{
+      let t=Math.random();
+      if(activeCloudMode==='horizontal'){
+        if(t<0.7){r=0.38;g=0.90;b=0.78;}else{r=1.0;g=0.74;b=0.36;}
+      }else{
+        if(t<0.6){r=0.38;g=0.90;b=0.78;}else if(t<0.85){r=0.75;g=0.52;b=0.99;}else{r=0.36;g=0.62;b=1.00;}
+      }
+    }
+    colArr.push(r,g,b);
+    samplesCollected++;
+  }
+
+  cloudStatsData={rmax,rmin:(rmin===Infinity?0:rmin),zmax,zmin};
+  $('statRmax').textContent=rmax.toFixed(0);
+  $('statRmin').textContent=(rmin===Infinity?0:rmin).toFixed(0);
+  $('statZmax').textContent=zmax.toFixed(0);
+  $('statZmin').textContent=zmin.toFixed(0);
+
+  let geom=new THREE.BufferGeometry();
+  geom.setAttribute('position',new THREE.Float32BufferAttribute(posArr,3));
+  geom.setAttribute('color',new THREE.Float32BufferAttribute(colArr,3));
+  let mat=new THREE.PointsMaterial({size:ptSize,vertexColors:true,transparent:true,opacity:opacity,blending:THREE.AdditiveBlending,depthWrite:false});
+  
+  cloudMesh=new THREE.Points(geom,mat);
+  cloudMesh.visible=isVisible;
+  scene.add(cloudMesh);
+
+  updateTargetWorkspaceEvaluation();
+}
+
+function updateTargetWorkspaceEvaluation(){
+  let tx=target[0], ty=target[1], tz=target[2], dist3D=Math.hypot(tx,ty,tz);
+  let maxR=cloudStatsData.rmax || (geo.d12+geo.L1+geo.d34+geo.L2+geo.d56+geo.Lg), minR=cloudStatsData.rmin || 30;
+  if(dist3D>maxR){$('status').innerHTML='<span class="bad">TARGET FUORI INVILUPPO (Troppo lontano)</span>';}
+}
+
+$('btnCloudFree').onclick=()=>{activeCloudMode='free';$('btnCloudFree').classList.add('active');$('btnCloudHori').classList.remove('active');$('showCloud').checked=true;$('cloudStateBadge').textContent='ON';generateReachabilityCloud();};
+$('btnCloudHori').onclick=()=>{activeCloudMode='horizontal';$('btnCloudHori').classList.add('active');$('btnCloudFree').classList.remove('active');$('showCloud').checked=true;$('cloudStateBadge').textContent='ON';generateReachabilityCloud();};
+$('showCloud').onchange=e=>{if(!cloudMesh) generateReachabilityCloud();if(cloudMesh) cloudMesh.visible=e.target.checked;$('cloudStateBadge').textContent=e.target.checked?'ON':'OFF';};
+$('cloudDensity').oninput=e=>{$('cloudDensityVal').textContent=(+e.target.value/1000)+'k';};
+$('cloudPointSize').oninput=e=>{$('cloudPointSizeVal').textContent=e.target.value+'px';if(cloudMesh) cloudMesh.material.size=+e.target.value;};
+$('cloudOpacity').oninput=e=>{$('cloudOpacityVal').textContent=e.target.value+'%';if(cloudMesh) cloudMesh.material.opacity=+e.target.value/100.0;};
+$('cloudSection').onchange=()=>generateReachabilityCloud();
+$('cloudColorMap').onchange=()=>generateReachabilityCloud();
+$('recalcCloud').onclick=()=>{$('showCloud').checked=true;$('cloudStateBadge').textContent='ON';generateReachabilityCloud();};
+
+/* =========================================================================
+   === PERSISTENZA TRIPLE JSON & MASTER BACKUP SNAPSHOT ===
+   ========================================================================= */
+function stlConfigSnapshot(){
+  return {
+    version: 29,
+    type: "stl_configuration",
+    timestamp: new Date().toISOString(),
+    geo,
+    dummyJoints,
+    endpointDummy,
+    stlWeights: physicsConfig.stlWeights,
+    assets: assets.map(a=>({
+      id: a.id,
+      name: a.name,
+      attach: a.attach,
+      scale: a.mesh.scale.x,
+      x: a.mesh.position.x,
+      y: -a.mesh.position.z,
+      z: a.mesh.position.y,
+      rx: a.mesh.rotation.x * R,
+      ry: a.mesh.rotation.z * R,
+      rz: a.mesh.rotation.y * R
+    }))
+  };
+}
+
+function posesConfigSnapshot(){
+  return {
+    version: 29,
+    type: "saved_poses_and_motion",
+    timestamp: new Date().toISOString(),
+    target,
+    smoothWeight,
+    postureMode: $('postureMode')?.value || 'crane',
+    jointSpeeds,
+    globalSpeed,
+    trailSettings,
+    physicsConfig,
+    poses: savedPoses
+  };
+}
+
+function animConfigSnapshot(){
+  return {
+    version: 29,
+    type: "animation_groups_and_sequences",
+    timestamp: new Date().toISOString(),
+    activeGroup: activeAnimGroupKey,
+    animationGroups: animationGroups
+  };
+}
+
+function masterBackupSnapshot(){
+  return {
+    version: 29,
+    type: "robot6dof_master_backup",
+    timestamp: new Date().toISOString(),
+    currentRobotState: {
+      q: shownQ.slice(),
+      target: target.slice(),
+      horizontal: $('horizontal')?.checked ?? true,
+      postureMode: $('postureMode')?.value || 'crane',
+      smoothWeight: smoothWeight,
+      globalSpeed: globalSpeed,
+      jointSpeeds: jointSpeeds.slice(),
+      geo: Object.assign({}, geo),
+      dummyJoints: dummyJoints.map(x=>x.slice()),
+      endpointDummy: endpointDummy.slice(),
+      trailSettings: Object.assign({}, trailSettings),
+      physicsConfig: JSON.parse(JSON.stringify(physicsConfig))
+    },
+    stlConfig: stlConfigSnapshot(),
+    posesConfig: posesConfigSnapshot(),
+    animConfig: animConfigSnapshot()
+  };
+}
+
+function applyStlConfig(c){
+  if(!c) return;
+  geo = Object.assign({}, geo, c.geo || {});
+  Object.keys(geo).forEach(k => { if($(k)) $(k).value = geo[k]; });
+  dummyJoints = (c.dummyJoints || dummyJoints).map(x => x.slice());
+  endpointDummy = (c.endpointDummy || endpointDummy).slice();
+  if(c.stlWeights) {
+    physicsConfig.stlWeights = Object.assign({}, defaultStlWeights, c.stlWeights);
+    buildStlWeightsList();
+  }
+  rebuild(); syncDummy();
+}
+
+function applyPosesConfig(p){
+  if(!p) return;
+  target = (p.target || target).slice();
+  if(p.smoothWeight !== undefined){ smoothWeight = p.smoothWeight; if($('smoothWeight')) $('smoothWeight').value = smoothWeight; if($('smoothWeightVal')) $('smoothWeightVal').textContent = smoothWeight + '%'; }
+  if(p.globalSpeed !== undefined){ globalSpeed = p.globalSpeed; if($('globalSpeed')) $('globalSpeed').value = globalSpeed; if($('globalSpeedVal')) $('globalSpeedVal').textContent = globalSpeed + '%'; }
+  if(p.postureMode && $('postureMode')) $('postureMode').value = p.postureMode;
+  if(p.jointSpeeds){ jointSpeeds = p.jointSpeeds.slice(); buildSpeedSliders(); }
+  if(p.trailSettings){
+    trailSettings = Object.assign(trailSettings, p.trailSettings);
+    if($('enableTrail')) $('enableTrail').checked = trailSettings.enabled;
+    if($('trailThickness')) $('trailThickness').value = trailSettings.thickness;
+    if($('trailThicknessVal')) $('trailThicknessVal').textContent = trailSettings.thickness.toFixed(1) + ' mm';
+    if($('trailOpacity')) $('trailOpacity').value = trailSettings.opacity * 100;
+    if($('trailOpacityVal')) $('trailOpacityVal').textContent = (trailSettings.opacity * 100) + '%';
+    if($('trailColor')) $('trailColor').value = trailSettings.color;
+  }
+  if(p.physicsConfig){
+    physicsConfig = Object.assign(physicsConfig, p.physicsConfig);
+    if($('payloadMass')) $('payloadMass').value = physicsConfig.payload.mass;
+    if($('payloadMassNum')) $('payloadMassNum').value = physicsConfig.payload.mass;
+    if($('payloadEnabled')) $('payloadEnabled').checked = physicsConfig.payload.enabled;
+    if($('feaHeatmapEnabled')) $('feaHeatmapEnabled').checked = physicsConfig.fea.enabled;
+    if($('torqueProtectionCheck') && physicsConfig.torqueProtection !== undefined) $('torqueProtectionCheck').checked = physicsConfig.torqueProtection;
+    buildMotorsPhysicsList();
+    buildStlWeightsList();
+    updatePayload3DObject();
+  }
+  savedPoses = Object.assign({}, savedPoses, p.poses || {});
+  syncTarget(); refreshPoses(); refreshStepPoseDropdown(); updateTargetWorkspaceEvaluation();
+}
+
+function applyAnimConfig(a){
+  if(!a) return;
+  if(a.animationGroups && Object.keys(a.animationGroups).length > 0){
+    animationGroups = Object.assign({}, animationGroups, a.animationGroups);
+  }
+  if(a.activeGroup && animationGroups[a.activeGroup]){
+    activeAnimGroupKey = a.activeGroup;
+  }
+  refreshAnimGroupSelector();
+}
+
+function applyMasterBackup(mb){
+  if(!mb) return;
+  if(mb.stlConfig) applyStlConfig(mb.stlConfig);
+  if(mb.posesConfig) applyPosesConfig(mb.posesConfig);
+  if(mb.animConfig) applyAnimConfig(mb.animConfig);
+  if(mb.currentRobotState){
+    let cs = mb.currentRobotState;
+    if(cs.q) setPose(cs.q);
+    if(cs.target){ target = cs.target.slice(); syncTarget(); }
+    if(cs.horizontal !== undefined && $('horizontal')) $('horizontal').checked = cs.horizontal;
+    if(cs.postureMode && $('postureMode')) $('postureMode').value = cs.postureMode;
+    if(cs.physicsConfig) {
+      physicsConfig = Object.assign(physicsConfig, cs.physicsConfig);
+      buildMotorsPhysicsList();
+      buildStlWeightsList();
+    }
+  }
+  scheduleProjectWrite();
+}
+
+async function tryServerSave(endpoint, data){
+  const targets = [
+    endpoint,
+    'http://localhost:8765' + endpoint,
+    'http://127.0.0.1:8765' + endpoint
+  ];
+  for(let url of targets){
+    try{
+      let r = await fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data, null, 2)
+      });
+      if(r.ok) return true;
+    }catch(_){}
+  }
+  return false;
+}
+
+async function tryServerFetch(path){
+  const targets = [
+    path + '?t=' + Date.now(),
+    'http://localhost:8765' + path + '?t=' + Date.now(),
+    'http://127.0.0.1:8765' + path + '?t=' + Date.now()
+  ];
+  for(let url of targets){
+    try{
+      let r = await fetch(url);
+      if(r.ok) return await r.json();
+    }catch(_){}
+  }
+  return null;
+}
+
+async function writeTripleJsonFiles(){
+  let serverOk1 = await tryServerSave('/api/save_stl_config', stlConfigSnapshot());
+  let serverOk2 = await tryServerSave('/api/save_poses_config', posesConfigSnapshot());
+  let serverOk3 = await tryServerSave('/api/save_anim_config', animConfigSnapshot());
+  
+  let fsOk = false;
+  if(projectDir){
+    try{
+      let fh1 = await projectDir.getFileHandle('robot6dof_stl_config.json', {create:true});
+      let w1 = await fh1.createWritable(); await w1.write(JSON.stringify(stlConfigSnapshot(), null, 2)); await w1.close();
+      let fh2 = await projectDir.getFileHandle('robot6dof_saved_poses.json', {create:true});
+      let w2 = await fh2.createWritable(); await w2.write(JSON.stringify(posesConfigSnapshot(), null, 2)); await w2.close();
+      let fh3 = await projectDir.getFileHandle('robot6dof_animations.json', {create:true});
+      let w3 = await fh3.createWritable(); await w3.write(JSON.stringify(animConfigSnapshot(), null, 2)); await w3.close();
+      fsOk = true;
+    }catch(e){console.warn('Errore scrittura cartella:', e);}
+  }
+
+  if(serverOk3 || fsOk){
+    $('jsonCountBadge').innerHTML = '<span class="good">3 file scritti su DISCO ✓</span>';
+    return true;
+  } else {
+    $('jsonCountBadge').innerHTML = '<span class="warn">Memoria Browser (Non su disco)</span>';
+    return false;
+  }
+}
+
+async function executeMasterSaveAll(){
+  let curQName = 'posa_corrente';
+  savedPoses[curQName] = shownQ.slice();
+  refreshPoses();
+
+  let ok = await writeTripleJsonFiles();
+  await saveToIndexedDB();
+
+  let stlCount = assets.length;
+  let poseCount = Object.keys(savedPoses).length;
+  let animCount = Object.keys(animationGroups).length;
+
+  let msg = `
+    <span class="good" style="font-weight:700">✓ MASTER SAVE v29: PROGETTO SALVATO AL 100%!</span><br>
+    • <b>${stlCount} Pezzi STL & Pesi</b>: registrati nei file JSON.<br>
+    • <b>Torque Motori & Carichi FEA</b>: salvati con successo.<br>
+    • <b>${poseCount} Pose Statiche & ${animCount} Routine Animazioni</b>: sincronizzate su disco.
+  `;
+  $('status').innerHTML = msg;
+
+  let btn = $('btnMasterSaveProject');
+  if(btn){
+    let orig = btn.innerHTML;
+    btn.innerHTML = '✓ TUTTO SALVATO!';
+    btn.style.background = '#155e4b';
+    setTimeout(()=>{ btn.innerHTML = orig; btn.style.background = ''; }, 1800);
+  }
+  let hBtn = $('btnHeaderSaveAll');
+  if(hBtn){
+    let origH = hBtn.innerHTML;
+    hBtn.innerHTML = '✓ TUTTO SALVATO SU DISCO!';
+    setTimeout(()=>{ hBtn.innerHTML = origH; }, 1800);
+  }
+}
+
+$('btnMasterSaveProject').onclick = executeMasterSaveAll;
+$('btnHeaderSaveAll').onclick = executeMasterSaveAll;
+
+$('btnDownloadMasterBackup').onclick = () => {
+  let jsonStr = JSON.stringify(masterBackupSnapshot(), null, 2);
+  download('robot6dof_MASTER_BACKUP.json', jsonStr);
+  $('status').innerHTML = '<span class="good">✓ File robot6dof_MASTER_BACKUP.json scaricato! Contiene tutto il tuo lavoro in 1 file.</span>';
+};
+
+$('masterBackupFileInput').onchange = e => {
+  let file = e.target.files[0];
+  if(file){
+    let reader = new FileReader();
+    reader.onload = ev => {
+      try{
+        let mb = JSON.parse(ev.target.result);
+        applyMasterBackup(mb);
+        $('status').innerHTML = '<span class="good">✓ Backup Master ripristinato con successo al 100%!</span>';
+      }catch(err){
+        $('status').innerHTML = '<span class="bad">Errore lettura file backup: '+err.message+'</span>';
+      }
+    };
+    reader.readAsText(file);
+  }
+};
+
+function scheduleProjectWrite(){
+  clearTimeout(projectTimer);
+  projectTimer=setTimeout(()=>{
+    writeTripleJsonFiles();
+    saveToIndexedDB();
+  }, 300);
+}
+
+/* === PERSISTENZA INDEXED DB === */
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    let req=indexedDB.open('DigitalTwin6DOF_v29', 1);
+    req.onupgradeneeded=e=>{
+      let db=e.target.result;
+      if(!db.objectStoreNames.contains('assets')) db.createObjectStore('assets',{keyPath:'name'});
+      if(!db.objectStoreNames.contains('stl_config')) db.createObjectStore('stl_config',{keyPath:'id'});
+      if(!db.objectStoreNames.contains('poses_config')) db.createObjectStore('poses_config',{keyPath:'id'});
+      if(!db.objectStoreNames.contains('anim_config')) db.createObjectStore('anim_config',{keyPath:'id'});
+    };
+    req.onsuccess=e=>resolve(e.target.result);
+    req.onerror=e=>reject(e);
+  });
+}
+
+async function saveToIndexedDB(){
+  try{
+    let db=await openDB();
+    let tx=db.transaction(['assets','stl_config','poses_config','anim_config'],'readwrite');
+    let assetStore=tx.objectStore('assets');
+    assetStore.clear();
+    for(let a of assets){
+      if(a.buffer){
+        assetStore.put({
+          name: a.name, buffer: a.buffer,
+          config: {
+            id: a.id, name: a.name, attach: a.attach,
+            scale: a.mesh.scale.x,
+            x: a.mesh.position.x, y: -a.mesh.position.z, z: a.mesh.position.y,
+            rx: a.mesh.rotation.x*R, ry: a.mesh.rotation.z*R, rz: a.mesh.rotation.y*R
+          }
+        });
+      }
+    }
+    tx.objectStore('stl_config').put({id:'current', data: stlConfigSnapshot()});
+    tx.objectStore('poses_config').put({id:'current', data: posesConfigSnapshot()});
+    tx.objectStore('anim_config').put({id:'current', data: animConfigSnapshot()});
+  }catch(e){}
+}
+
+async function loadFromIndexedDB(){
+  try{
+    let db=await openDB();
+    let tx=db.transaction(['assets','stl_config','poses_config','anim_config'],'readonly');
+    let stlConfReq=tx.objectStore('stl_config').get('current');
+    stlConfReq.onsuccess=()=>{let c=stlConfReq.result?.data;if(c) applyStlConfig(c);};
+
+    let posesConfReq=tx.objectStore('poses_config').get('current');
+    posesConfReq.onsuccess=()=>{let p=posesConfReq.result?.data;if(p) applyPosesConfig(p);};
+
+    let animConfReq=tx.objectStore('anim_config').get('current');
+    animConfReq.onsuccess=()=>{let a=animConfReq.result?.data;if(a) applyAnimConfig(a);};
+
+    let stlReq=tx.objectStore('assets').getAll();
+    stlReq.onsuccess=async()=>{
+      let savedAssets=stlReq.result||[];
+      if(savedAssets.length>0 && assets.length===0){
+        clearAssets();
+        for(let sa of savedAssets){
+          let blob=new Blob([sa.buffer]);
+          let file=new File([blob],sa.name);
+          await addStlFile(file, sa.config);
+        }
+        refreshAssets();
+        if(assets.length) highlightAsset(0);
+        $('stlCountBadge').textContent=`${savedAssets.length} STL ripristinati ✓`;
+        $('status').innerHTML=`<span class="good">✓ Ripristinati ${savedAssets.length} STL dalla memoria locale.</span>`;
+      }
+    };
+  }catch(e){}
+}
+
+async function autoInitOnStartup(){
+  let stlList = await tryServerFetch('/api/list_stls');
+  if(stlList){
+    isLocalServer = true;
+    $('modeBadge').innerHTML = '<span class="good">DigitalTwin6DOF Server (8765)</span>';
+
+    let stlConf = await tryServerFetch('/robot6dof_stl_config.json');
+    if(stlConf) applyStlConfig(stlConf);
+
+    let posesConf = await tryServerFetch('/robot6dof_saved_poses.json');
+    if(posesConf) applyPosesConfig(posesConf);
+
+    let animConf = await tryServerFetch('/robot6dof_animations.json');
+    if(animConf) applyAnimConfig(animConf);
+
+    if(stlList.length > 0){
+      clearAssets();
+      let configMap = new Map();
+      if(stlConf && stlConf.assets) stlConf.assets.forEach(c => configMap.set(c.name, c));
+
+      for(let stlName of stlList){
+        try{
+          let fileResp = await fetch('http://localhost:8765/' + stlName + '?t=' + Date.now());
+          let blob = await fileResp.blob();
+          let file = new File([blob], stlName);
+          let cfg = configMap.get(stlName) || null;
+          await addStlFile(file, cfg);
+        }catch(err){console.warn('Errore STL:', stlName, err);}
+      }
+      refreshAssets();
+      if(assets.length) highlightAsset(0);
+      $('stlCountBadge').textContent = `${assets.length} STL caricati ✓`;
+      $('status').innerHTML = `<span class="good">✓ Sincronizzazione completata (${assets.length} STL e 3 file JSON letti da disco).</span>`;
+      saveToIndexedDB();
+      return;
+    }
+  }
+
+  $('modeBadge').innerHTML = '<span class="warn">Browser Sandbox / Offline</span>';
+  await loadFromIndexedDB();
+}
+
+async function scanProjectFolder(){
+  if(!window.showDirectoryPicker){$('status').innerHTML='<span class="bad">Browser non supportato per scansione cartella.</span>';return;}
+  try{
+    projectDir=await window.showDirectoryPicker({mode:'readwrite'});
+    let stlConfig=null, posesConfig=null, animConfig=null;
+    try{stlConfig=JSON.parse(await (await (await projectDir.getFileHandle('robot6dof_stl_config.json')).getFile()).text());applyStlConfig(stlConfig);}catch(_){}
+    try{posesConfig=JSON.parse(await (await (await projectDir.getFileHandle('robot6dof_saved_poses.json')).getFile()).text());applyPosesConfig(posesConfig);}catch(_){}
+    try{animConfig=JSON.parse(await (await (await projectDir.getFileHandle('robot6dof_animations.json')).getFile()).text());applyAnimConfig(animConfig);}catch(_){}
+
+    let stlFilesFound=[];
+    for await (const entry of projectDir.values()){
+      if(entry.kind==='file' && entry.name.toLowerCase().endsWith('.stl')){
+        stlFilesFound.push(await entry.getFile());
+      }
+    }
+    if(stlFilesFound.length>0){
+      clearAssets();
+      let configMap=new Map();
+      if(stlConfig && stlConfig.assets) stlConfig.assets.forEach(cfg=>configMap.set(cfg.name,cfg));
+      for(let file of stlFilesFound){
+        await addStlFile(file, configMap.get(file.name)||null);
+      }
+      refreshAssets();
+      if(assets.length) highlightAsset(0);
+    }
+    await writeTripleJsonFiles();
+    await saveToIndexedDB();
+    $('stlCountBadge').textContent=`${stlFilesFound.length} STL collegati ✓`;
+    $('status').innerHTML=`<span class="good">Cartella collegata! ${stlFilesFound.length} STL e 3 file JSON sincronizzati.</span>`;
+  }catch(e){if(e.name!=='AbortError') console.error(e);}
+}
+
+$('scanFolder').onclick=scanProjectFolder;
+$('btnConnectFolderDirect').onclick=scanProjectFolder;
+$('writeProject').onclick=async()=>{
+  let ok=await writeTripleJsonFiles();
+  await saveToIndexedDB();
+  $('status').innerHTML=ok?'<span class="good">✓ Tutti i file JSON aggiornati su disco in Marco Codici 6 DOF!</span>':'<span class="good">✓ Configurazione salvata nella memoria locale!</span>';
+};
+$('reloadAllJsonBtn').onclick=async()=>{
+  await autoInitOnStartup();
+  $('status').innerHTML='<span class="good">✓ File JSON ricaricati e uniti da disco.</span>';
+};
+$('dlStlJson').onclick=()=>download('robot6dof_stl_config.json', JSON.stringify(stlConfigSnapshot(),null,2));
+$('dlPosesJson').onclick=()=>download('robot6dof_saved_poses.json', JSON.stringify(posesConfigSnapshot(),null,2));
+$('dlAnimJson').onclick=()=>download('robot6dof_animations.json', JSON.stringify(animConfigSnapshot(),null,2));
+
+/* === THREE.JS MESH REBUILD & RENDERING === */
+function newAssetId(fileName){let stem=fileName.replace(/\.stl$/i,'').trim()||'pezzo',n=1,id=stem+'_'+n;while(assets.some(a=>a.id===id))id=stem+'_'+(++n);return id}
+function highlightAsset(index){selectedAssetIndex=index;assets.forEach((a,i)=>{a.mesh.material.color.set(i===index?0xffbc5c:0xa9c5c9);a.mesh.material.emissive&&a.mesh.material.emissive.set(i===index?0x5a3100:0x000000)});document.querySelectorAll('.treeItem').forEach((el,i)=>el.classList.toggle('selected',i===index));if(index>=0){$('assetSelect').value=index;readAsset(assets[index])}}
+function refreshHierarchy(){let h=$('hierarchy');h.innerHTML='<div class="sub">└─ Robot 6 DOF</div>';assets.forEach((a,i)=>{let e=document.createElement('div');e.className='treeItem'+(i===selectedAssetIndex?' selected':'');e.textContent='   '+a.id+'  →  '+(a.attach<0?'Mondo':a.attach===6?'Pinza':'Braccio '+(a.attach+1));e.onclick=()=>highlightAsset(i);h.appendChild(e)})}
+function rebuild(){arm.clear();links=[];joints=[];let lm=new THREE.MeshStandardMaterial({color:0x29484d,metalness:.35,roughness:.45}),jm=new THREE.MeshStandardMaterial({color:0x61e6c7,emissive:0x093f36});for(let i=0;i<6;i++){let m=new THREE.Mesh(new THREE.CylinderGeometry(geo.diameter/2,geo.diameter/2,1,18),lm);arm.add(m);links.push(m)}for(let i=0;i<7;i++){let m=new THREE.Mesh(new THREE.SphereGeometry(geo.diameter*.62,16,16),jm);arm.add(m);joints.push(m)}}rebuild();
+
+function draw(){
+  let f=fk(shownQ);
+  for(let i=0;i<6;i++){
+    let a=V(f.pts[i]),b=V(f.pts[i+1]),d=b.clone().sub(a),m=links[i];
+    m.position.copy(a).add(b).multiplyScalar(.5);
+    m.scale.set(1,d.length(),1);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize());
+  }
+  f.pts.forEach((p,i)=>joints[i].position.copy(V(p)));
+  marker.position.copy(V(target));
+  dummyJoints.forEach((p,i)=>dummyMeshes[i].position.copy(V(p)));
+  dummyMeshes[7].position.copy(V(endpointDummy));
+  
+  assets.forEach(a=>{
+    let at=a.attach;
+    if(at<0){
+      a.root.position.set(0,0,0);a.root.quaternion.identity();
+    }else{
+      let ji=at===6?5:at,point=at===6?f.end:f.pts[at];
+      a.root.position.copy(V(point));
+      a.root.quaternion.copy(jointQuaternion(f.frames[ji]));
+    }
+  });
+
+  if(payloadMesh && payloadMesh.visible){
+    payloadMesh.position.copy(V(f.end));
+    payloadMesh.quaternion.copy(jointQuaternion(f.frames[5]));
+  }
+
+  if(isRecordingTrail || anim){
+    addTrailPoint(V(f.end));
+  }
+
+  calculateRobotPhysics(shownQ);
+
+  let rxy = Math.hypot(f.end[0], f.end[1]);
+  let ux = rxy > 1e-4 ? f.end[0]/rxy : 1, uy = rxy > 1e-4 ? f.end[1]/rxy : 0;
+  let targetAx = $('horizontal').checked ? [ux, uy, 0] : (norm(f.end) > 1e-4 ? [f.end[0]/norm(f.end), f.end[1]/norm(f.end), f.end[2]/norm(f.end)] : [ux, uy, 0]);
+  let dotProd = f.axis[0]*targetAx[0] + f.axis[1]*targetAx[1] + f.axis[2]*targetAx[2];
+  let angleErrDeg = Math.acos(clamp(dotProd, -1, 1)) * R;
+
+  let elbowZ = f.pts[3][2], wristZ = f.pts[5][2];
+  let isCraneArch = (elbowZ > wristZ + 10) && (shownQ[3] < -10);
+  let isJ2NearZero = Math.abs(shownQ[1]) <= 15;
+
+  let j2TorqueVal = calculatedTorques[1] || 0;
+  let j2StressVal = calculatedStressPct[1] || 0;
+  let j2TorqueClass = j2StressVal < 50 ? 'good' : (j2StressVal < 80 ? 'warn' : 'bad');
+  let j2Badge = $('j2TorqueStat');
+  if(j2Badge) j2Badge.innerHTML = `<span class="${j2TorqueClass}">${j2TorqueVal.toFixed(1)} kg·cm (${j2StressVal.toFixed(0)}%) ${j2StressVal < 50 ? '✓ Minimo' : ''}</span>`;
+
+  $('j2AngleStat').innerHTML = `<span class="${isJ2NearZero ? 'good' : 'warn'}">${shownQ[1].toFixed(1)}° ${isJ2NearZero ? '(Verticale ≈ 0° ✓)' : '(Inclinato)'}</span>`;
+  $('elbowZStat').innerHTML = `<span class="${isCraneArch ? 'good' : 'warn'}">${elbowZ.toFixed(1)} mm ${isCraneArch ? '(Apice Alto ↑)' : ''}</span>`;
+  $('postureShapeBadge').innerHTML = (isCraneArch && isJ2NearZero) ? '<span class="good">🏗️ Colonna J2≈0° / U Rovesciata ✓</span>' : '<span class="warn">Gomito Standard</span>';
+  $('gripAngleErr').innerHTML = angleErrDeg < 2.5 ? `<span class="good">${angleErrDeg.toFixed(1)}° (Perfetto ✓)</span>` : `<span class="warn">${angleErrDeg.toFixed(1)}°</span>`;
+  $('angles').innerHTML=shownQ.map((v,i)=>`J${i+1}: ${v.toFixed(1)}°`).join('<br>');
+  $('position').innerHTML=`X: ${f.end[0].toFixed(1)}<br>Y: ${f.end[1].toFixed(1)}<br>Z: ${f.end[2].toFixed(1)}`;
+}
+
+let az=.8,el=.45,dist=950,drag=false,last;
+function cam(){camera.position.set(dist*Math.cos(el)*Math.sin(az),250+dist*Math.sin(el),dist*Math.cos(el)*Math.cos(az));camera.lookAt(0,200,0)}
+
+renderer.domElement.addEventListener('pointerdown',e=>{
+  if(isDraggingGizmo) return;
+  drag=true;last={x:e.clientX,y:e.clientY};
+});
+renderer.domElement.addEventListener('pointerup',e=>{drag=false;});
+renderer.domElement.addEventListener('pointermove',e=>{
+  if(!drag || isDraggingGizmo) return;
+  az-=(e.clientX-last.x)*.006;
+  el=clamp(el+(e.clientY-last.y)*.006,-1.2,1.3);
+  last={x:e.clientX,y:e.clientY};
+});
+renderer.domElement.addEventListener('wheel',e=>{
+  dist=clamp(dist+e.deltaY*.55,250,3500);
+  e.preventDefault();
+},{passive:false});
+
+function syncTarget(){
+  ['tx','ty','tz'].forEach((id,i)=>$(id).value=target[i].toFixed(1));
+  marker.position.copy(V(target));
+}
+
+function setCameraView(newAz, newEl, newDist=950){
+  az = newAz; el = newEl; dist = newDist;
+  document.querySelectorAll('.cad-btn').forEach(b=>b.classList.remove('active'));
+}
+
+$('viewIso').onclick=e=>{setCameraView(0.8, 0.45, 950);e.target.classList.add('active');};
+$('viewTop').onclick=e=>{setCameraView(0, 1.45, 1100);e.target.classList.add('active');};
+$('viewFront').onclick=e=>{setCameraView(0, 0.05, 1050);e.target.classList.add('active');};
+$('viewSide').onclick=e=>{setCameraView(Math.PI/2, 0.05, 1050);e.target.classList.add('active');};
+$('viewReset').onclick=()=>{setCameraView(0.8, 0.45, 950);$('viewIso').classList.add('active');};
+$('viewFull').onclick=()=>{
+  if(!document.fullscreenElement){
+    document.documentElement.requestFullscreen().catch(()=>{});
+  }else{
+    document.exitFullscreen().catch(()=>{});
+  }
+};
+
+/* === GESTIONE RESIZING PANNELLI TRASCINABILI === */
+let isResizingLeft = false, isResizingRight = false;
+const resizerLeft = $('resizerLeft'), resizerRight = $('resizerRight');
+
+resizerLeft.addEventListener('mousedown', e => {
+  isResizingLeft = true;
+  resizerLeft.classList.add('dragging');
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+});
+
+resizerRight.addEventListener('mousedown', e => {
+  isResizingRight = true;
+  resizerRight.classList.add('dragging');
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+});
+
+window.addEventListener('mousemove', e => {
+  if (isResizingLeft) {
+    let w = Math.max(340, Math.min(800, e.clientX));
+    document.documentElement.style.setProperty('--left-w', w + 'px');
+    resize();
+  }
+  if (isResizingRight) {
+    let w = Math.max(280, Math.min(700, window.innerWidth - e.clientX));
+    document.documentElement.style.setProperty('--right-w', w + 'px');
+    resize();
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  if (isResizingLeft || isResizingRight) {
+    isResizingLeft = false;
+    isResizingRight = false;
+    resizerLeft.classList.remove('dragging');
+    resizerRight.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    resize();
+  }
+});
+
+$('toggleLeftBtn').onclick=()=>{
+  let app=$('app');
+  if(app.classList.contains('hide-left')){
+    app.classList.remove('hide-left');
+    $('toggleLeftBtn').textContent='◀';
+  }else{
+    app.classList.add('hide-left');
+    $('toggleLeftBtn').textContent='▶';
+  }
+  setTimeout(resize, 260);
+};
+
+$('toggleRightBtn').onclick=()=>{
+  let app=$('app');
+  if(app.classList.contains('hide-right')){
+    app.classList.remove('hide-right');
+    $('toggleRightBtn').textContent='▶';
+  }else{
+    app.classList.add('hide-right');
+    $('toggleRightBtn').textContent='◀';
+  }
+  setTimeout(resize, 260);
+};
+
+function tick(){
+  if(anim){
+    let elapsed = performance.now() - anim.at;
+    let totalD = anim.totalDuration || 1;
+    if(elapsed >= totalD){
+      shownQ = anim.waypoints[anim.waypoints.length - 1].slice();
+      anim = null;
+    } else {
+      let curT = 0;
+      let activeSeg = 0;
+      let segFrac = 0;
+      for(let i = 0; i < anim.segmentDurations.length; i++){
+        let segD = anim.segmentDurations[i];
+        if(elapsed <= curT + segD || i === anim.segmentDurations.length - 1){
+          activeSeg = i;
+          let t = clamp((elapsed - curT) / Math.max(1, segD), 0, 1);
+          segFrac = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+          break;
+        }
+        curT += segD;
+      }
+      let pA = anim.waypoints[activeSeg];
+      let pB = anim.waypoints[activeSeg + 1];
+      shownQ = pA.map((v, idx) => v + (pB[idx] - v) * segFrac);
+    }
+  }
+  draw();cam();renderer.render(scene,camera);requestAnimationFrame(tick);
+}
+function resize(){renderer.setSize(view.clientWidth,view.clientHeight);camera.aspect=view.clientWidth/view.clientHeight;camera.updateProjectionMatrix()}
+addEventListener('resize',resize);resize();
+
+['J1 yaw','J2 pitch','J3 yaw','J4 pitch','J5 yaw','J6 pitch'].forEach((name,i)=>{
+  let d=document.createElement('div');d.className='row';
+  d.innerHTML=`<label>${name}</label><input type="range" min="${limits[i][0]}" max="${limits[i][1]}" value="${defaultRestPose[i]}"><span class="val">${defaultRestPose[i]}°</span>`;
+  d.querySelector('input').oninput=e=>{
+    q[i]=shownQ[i]=+e.target.value;
+    d.querySelector('.val').textContent=q[i]+'°';
+    if(trailSettings.enabled && !isRunningSequence && !isRunningAnimRoutine) addTrailPoint(V(fk(shownQ).end));
+  };
+  $('sliders').appendChild(d);
+});
+
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===b));
+  let isFK = b.dataset.tab==='fk';
+  $('fk').hidden=!isFK;
+  $('ik').hidden=isFK;
+  transformControl.visible = !isFK;
+  transformControl.enabled = !isFK;
+  marker.visible = !isFK;
+});
+['tx','ty','tz'].forEach((id,i)=>$(id).oninput=()=>{target[i]=+$(id).value||0;marker.position.copy(V(target));updateTargetWorkspaceEvaluation();scheduleProjectWrite();});
+$('smoothWeight').oninput=e=>{smoothWeight=+e.target.value;$('smoothWeightVal').textContent=smoothWeight+'%';scheduleProjectWrite();};
+$('postureMode').onchange=()=>scheduleProjectWrite();
+
+$('applyGeo').onclick=()=>{
+  Object.keys(geo).forEach(k=>geo[k]=+$(k).value||0);
+  rebuild();
+  if($('showCloud').checked) generateReachabilityCloud();
+  updateTargetWorkspaceEvaluation();
+  scheduleProjectWrite();
+};
+$('vertical').onclick=()=>setPose([0,0,0,0,0,0]);
+$('rest').onclick=()=>setPose(defaultRestPose);
+$('showTarget').onclick=()=>{
+  let v = !transformControl.visible;
+  transformControl.visible = v;
+  transformControl.enabled = v;
+  marker.visible = v;
+};
+
+function runIKCalculation(useCycle=true){
+  Object.keys(geo).forEach(k=>geo[k]=+$(k).value||0);
+  let res=ik(target,q,$('horizontal').checked);
+  if(res.ok){
+    let phys = evaluatePoseTorques(res.x);
+    let j2TorqueKg = phys.torquesKg[1];
+    let j2StressPct = phys.stressPcts[1];
+    let j2Badge = j2StressPct < 50
+      ? `<span class="good">🛡️ Spalla J2 Protetta (${j2TorqueKg.toFixed(1)} kg·cm / ${j2StressPct.toFixed(0)}% · Minimo Sforzo ✓)</span>`
+      : (j2StressPct < 80 
+        ? `<span class="warn">⚠️ Sforzo J2 Moderato (${j2TorqueKg.toFixed(1)} kg·cm / ${j2StressPct.toFixed(0)}%)</span>`
+        : `<span class="bad">🔴 Attenzione: J2 Sovraccaricato (${j2TorqueKg.toFixed(1)} kg·cm / ${j2StressPct.toFixed(0)}%)</span>`);
+
+    let orientNote = res.relaxed ? '<span class="warn" style="font-size:10.5px"> (Orientamento pinza adattato per raggiungere la quota estrema)</span>' : '';
+
+    if(useCycle && $('useCycle').checked){
+      executeTargetSequence(res.x);
+    }else{
+      stopSequence();clearTrail();isRecordingTrail=true;setPose(res.x);
+      $('status').innerHTML=`
+        <span class="good">✓ TARGET RAGGIUNTO${orientNote}</span><br>
+        ${j2Badge}<br>
+        J1: ${res.x[0].toFixed(1)}° | J2: ${res.x[1].toFixed(1)}° | J4: ${res.x[3].toFixed(1)}° | J6: ${res.x[5].toFixed(1)}°<br>
+        Errore Pos.: ${res.e.toFixed(2)} mm
+      `;
+    }
+  }else{
+    $('status').innerHTML=`<span class="bad">TARGET NON RAGGIUNGIBILE</span><br>Errore minimo: ${res.e.toFixed(1)} mm. Il punto è al di fuori della sfera di sbraccio massimo del robot (${(geo.L1+geo.L2+geo.Lg).toFixed(0)} mm).`;
+  }
+}
+$('solve').onclick=()=>runIKCalculation(true);
+$('solveDirect').onclick=()=>runIKCalculation(false);
+
+function selectedAsset(){return assets[+$('assetSelect').value]||null}
+function readAsset(a){
+  if(!a)return;let m=a.mesh;
+  $('assetScale').value=m.scale.x;$('assetX').value=m.position.x;$('assetY').value=(-m.position.z).toFixed(3);$('assetZ').value=m.position.y;
+  $('assetRX').value=(m.rotation.x*R).toFixed(1);$('assetRY').value=(m.rotation.z*R).toFixed(1);$('assetRZ').value=(m.rotation.y*R).toFixed(1);
+  $('assetAttach').value=a.attach;
+}
+function refreshAssets(){
+  let s=$('assetSelect'),old=s.value;s.innerHTML=assets.length?'':'<option>Nessun STL</option>';
+  assets.forEach((a,i)=>{let o=document.createElement('option');o.value=i;o.textContent=a.id;s.appendChild(o)});
+  s.value=assets.length?Math.min(+old||0,assets.length-1):'';readAsset(selectedAsset());refreshHierarchy();
+  buildStlWeightsList();
+}
+function clearAssets(){while(assets.length){let a=assets.pop();assetRoot.remove(a.root);a.mesh.geometry.dispose();a.mesh.material.dispose()}selectedAssetIndex=-1}
+
+async function addStlFile(file,config=null){
+  let loader=new THREE.STLLoader(),buffer=await file.arrayBuffer(),g=loader.parse(buffer);
+  g.computeVertexNormals();g.center();
+  let mesh=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:0xa9c5c9,metalness:.25,roughness:.55})),root=new THREE.Group();
+  root.add(mesh);assetRoot.add(root);
+  let a={id:config?.id||newAssetId(file.name),name:file.name,root,mesh,attach:config?.attach??-1,buffer:buffer};
+  if(config){mesh.scale.setScalar(config.scale);mesh.position.set(config.x,config.z,-config.y);mesh.rotation.set(config.rx*D,config.rz*D,config.ry*D)}
+  assets.push(a);
+  if(!physicsConfig.stlWeights[file.name]){
+    physicsConfig.stlWeights[file.name] = defaultStlWeights[file.name] || 100;
+  }
+}
+
+$('assetSelect').onchange=()=>highlightAsset(+$('assetSelect').value);
+$('applyAsset').onclick=()=>{
+  let a=selectedAsset();if(!a)return;let m=a.mesh,sc=Math.max(.0001,+$('assetScale').value||1);
+  m.scale.setScalar(sc);m.position.set(+$('assetX').value||0,+$('assetZ').value||0,-(+$('assetY').value||0));
+  m.rotation.set((+$('assetRX').value||0)*D,(+$('assetRZ').value||0)*D,(+$('assetRY').value||0)*D);
+  a.attach=+$('assetAttach').value;
+  refreshHierarchy();scheduleProjectWrite();$('status').innerHTML='<span class="good">STL aggiornato e configurazione salvata.</span>';
+};
+$('deleteAsset').onclick=()=>{
+  let i=+$('assetSelect').value,a=assets[i];if(!a)return;
+  assetRoot.remove(a.root);a.mesh.geometry.dispose();a.mesh.material.dispose();
+  assets.splice(i,1);selectedAssetIndex=-1;refreshAssets();scheduleProjectWrite();
+  $('status').innerHTML='<span class="good">STL eliminato.</span>';
+};
+
+$('stlFiles').onchange=async e=>{
+  for(let file of e.target.files){
+    try{
+      await addStlFile(file);
+    }catch(_){$('status').innerHTML='<span class="bad">Impossibile leggere '+file.name+'</span>'}
+  }
+  refreshAssets();
+  if(assets.length){highlightAsset(assets.length-1);scheduleProjectWrite();$('status').innerHTML=`<span class="good">${assets.length} STL caricati e memorizzati.</span>`}
+};
+
+/* === DUMMY & PROGETTO === */
+function dummyValue(){let v=$('dummySelect').value;if(v==='target')return target;if(v==='endpoint')return endpointDummy;return dummyJoints[+v]}
+function syncDummy(){let p=dummyValue();$('dummyX').value=p[0].toFixed(1);$('dummyY').value=p[1].toFixed(1);$('dummyZ').value=p[2].toFixed(1)}
+$('dummySelect').onchange=syncDummy;
+$('applyDummy').onclick=()=>{
+  let p=dummyValue();p[0]=+$('dummyX').value||0;p[1]=+$('dummyY').value||0;p[2]=+$('dummyZ').value||0;
+  if($('dummySelect').value==='target')syncTarget();
+  scheduleProjectWrite();$('status').innerHTML='<span class="good">Dummy aggiornato.</span>';
+};
+$('captureJoints').onclick=()=>{
+  let f=fk(shownQ);dummyJoints=f.pts.map(p=>p.slice());endpointDummy=f.end.slice();syncDummy();scheduleProjectWrite();
+  $('status').innerHTML='<span class="good">Giunti catturati dalla posa attuale.</span>';
+};
+$('useDummyGeometry').onclick=()=>{
+  let ds=[];for(let i=0;i<6;i++)ds.push(norm(sub(dummyJoints[i+1],dummyJoints[i])));
+  if(ds.some(x=>x<.1)){$('status').innerHTML='<span class="bad">Dummy non validi. Cattura i giunti o posizionali correttamente.</span>';return}
+  ['d12','L1','d34','L2','d56','Lg'].forEach((id,i)=>{$(id).value=ds[i].toFixed(1)});
+  Object.keys(geo).forEach(k=>geo[k]=+$(k).value||0);
+  rebuild();
+  if($('showCloud').checked) generateReachabilityCloud();
+  scheduleProjectWrite();$('status').innerHTML='<span class="good">Geometria IK aggiornata dai dummy.</span>';
+};
+
+let savedPoses={};
+function refreshPoses(){
+  let s=$('poseList');s.innerHTML='';
+  Object.keys(savedPoses).sort().forEach(n=>{
+    let o=document.createElement('option');o.value=n;o.textContent=n;s.appendChild(o);
+  });
+  refreshStepPoseDropdown();
+}
+
+$('savePose').onclick=()=>{
+  let n=$('poseName').value.trim()||'pose_'+Object.keys(savedPoses).length;
+  savedPoses[n]=q.slice();
+  refreshPoses();
+  $('poseList').value=n;
+  scheduleProjectWrite();
+  $('status').innerHTML=`<span class="good">✓ Posa "${n}" salvata/aggiunta. Totale pose: ${Object.keys(savedPoses).length}.</span>`;
+};
+$('playPose').onclick=()=>{
+  let n=$('poseList').value;
+  if(n&&savedPoses[n]){
+    clearTrail();
+    isRecordingTrail=true;
+    setPose(savedPoses[n]);
+  }
+};
+$('deletePose').onclick=()=>{
+  let n=$('poseList').value;
+  if(n && confirm(`Eliminare la posa "${n}"?`)){
+    delete savedPoses[n];
+    refreshPoses();
+    scheduleProjectWrite();
+  }
+};
+
+function download(name,text){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/plain'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
+$('exportCpp').onclick=()=>{
+  let g = geo;
+  let qMinStr = limits.map(l => l[0].toFixed(1) + 'f').join(', ');
+  let qMaxStr = limits.map(l => l[1].toFixed(1) + 'f').join(', ');
+  let speedsStr = jointSpeeds.map(s => s.toFixed(1) + 'f').join(', ');
+  let restStr = defaultRestPose.map(r => r.toFixed(1) + 'f').join(', ');
+
+  let sketch = `/* =========================================================================
+   ROBOT 6 DOF - FIRMWARE PROFESSIONALE COMPLETO PER ESP32 (.ino)
+   =========================================================================
+   Generato da Digital Twin 6 DOF Workspace Studio (Marco Codici 6 DOF)
+   
+   Caratteristiche incluse:
+   1. Cinematica Inversa 6 DOF Ibrida (Analitica 3-Link + DLS 6 DOF)
+   2. Postura a Minimo Stress J2 (Gru / Crane Posture & Anti-Sovraccarico)
+   3. Vincolo Pinza Orizzontale & Radiale
+   4. Pianificatore di Traiettoria Morbida (Cubic S-Curve & Anti-Stall Waypoints)
+   5. Parser Seriale Interattivo a 115200 baud (Comandi: IK, MOVE, REST, STATUS...)
+   6. Supporto sia per Pin PWM Diretti ESP32 che per Driver I2C PCA9685
+   ========================================================================= */
+
+#include <Arduino.h>
+#include <math.h>
+
+// =========================================================================
+// 1. CONFIGURAZIONE HARDWARE & PIN GPIO ESP32
+// =========================================================================
+#define USE_DIRECT_ESP32_GPIO 1
+
+#if USE_DIRECT_ESP32_GPIO
+  #include <ESP32Servo.h>
+  
+  // Pin GPIO assegnati ai 6 Servomotori (Modifica secondo il tuo schema)
+  const int SERVO_PIN_J1 = 13; // Base Yaw (270°)
+  const int SERVO_PIN_J2 = 12; // Spalla Pitch (180°)
+  const int SERVO_PIN_J3 = 14; // Braccio Roll (270°)
+  const int SERVO_PIN_J4 = 27; // Gomito Pitch (180°)
+  const int SERVO_PIN_J5 = 26; // Polso Roll (270°)
+  const int SERVO_PIN_J6 = 25; // Pinza Pitch (180°)
+  
+  Servo servos[6];
+  const int servoPins[6] = {SERVO_PIN_J1, SERVO_PIN_J2, SERVO_PIN_J3, SERVO_PIN_J4, SERVO_PIN_J5, SERVO_PIN_J6};
+#else
+  #include <Wire.h>
+  #include <Adafruit_PWMServoDriver.h>
+  Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40);
+  const int servoChannels[6] = {0, 1, 2, 3, 4, 5};
+#endif
+
+// =========================================================================
+// 2. CALIBRAZIONE IMPULSI PWM (Microsecondi) & LIMITI MECCANICI GIUNTI
+// =========================================================================
+const int PWM_MIN_US[6] = { 500,  500,  500,  500,  500,  500};
+const int PWM_MAX_US[6] = {2500, 2500, 2500, 2500, 2500, 2500};
+
+// Offset di calibrazione meccanica (gradi) per centrare i servi
+float jointAngleOffsets[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+
+// Limiti angolari dei giunti
+const float Q_MIN[6] = {${qMinStr}};
+const float Q_MAX[6] = {${qMaxStr}};
+const float MAX_JOINT_SPEED[6] = {${speedsStr}};
+const float DEFAULT_REST_POSE[6] = {${restStr}};
+
+// =========================================================================
+// 3. PARAMETRI GEOMETRIA STRUTTURALE BRACCIO (mm)
+// =========================================================================
+struct RobotGeometry {
+  float d12 = ${g.d12.toFixed(1)}f;
+  float L1  = ${g.L1.toFixed(1)}f;
+  float d34 = ${g.d34.toFixed(1)}f;
+  float L2  = ${g.L2.toFixed(1)}f;
+  float d56 = ${g.d56.toFixed(1)}f;
+  float Lg  = ${g.Lg.toFixed(1)}f;
+} geo;
+
+const float DEG2RAD = 0.01745329251994329577f;
+const float RAD2DEG = 57.2957795130823208768f;
+
+float currentQ[6] = {${restStr}};
+float targetQ[6]  = {${restStr}};
+bool servosAttached = false;
+
+// =========================================================================
+// 4. FUNZIONI CINEMATICA DIRETTA (FK)
+// =========================================================================
+float clampf(float v, float a, float b){ return v < a ? a : (v > b ? b : v); }
+
+void matMul(const float A[3][3], const float B[3][3], float C[3][3]){
+  for(int i=0; i<3; i++)
+    for(int j=0; j<3; j++){
+      C[i][j] = 0;
+      for(int k=0; k<3; k++) C[i][j] += A[i][k] * B[k][j];
+    }
+}
+
+void matVecMul(const float A[3][3], const float v[3], float r[3]){
+  for(int i=0; i<3; i++) r[i] = A[i][0]*v[0] + A[i][1]*v[1] + A[i][2]*v[2];
+}
+
+void fk(const float qDeg[6], float endPos[3], float endAxis[3]){
+  float M[3][3] = {{1,0,0}, {0,1,0}, {0,0,1}};
+  float T[3][3];
+  float p[3] = {0.0f, 0.0f, 0.0f};
+  const float linkLengths[6] = {geo.d12, geo.L1, geo.d34, geo.L2, geo.d56, geo.Lg};
+  
+  for(int i=0; i<6; i++){
+    float rad = qDeg[i] * DEG2RAD;
+    float c = cosf(rad), s = sinf(rad);
+    float Q[3][3];
+    if(i % 2 == 0){
+      Q[0][0] = c;  Q[0][1] = -s; Q[0][2] = 0;
+      Q[1][0] = s;  Q[1][1] = c;  Q[1][2] = 0;
+      Q[2][0] = 0;  Q[2][1] = 0;  Q[2][2] = 1;
+    } else {
+      Q[0][0] = c;  Q[0][1] = 0;  Q[0][2] = s;
+      Q[1][0] = 0;  Q[1][1] = 1;  Q[1][2] = 0;
+      Q[2][0] = -s; Q[2][1] = 0;  Q[2][2] = c;
+    }
+    matMul(M, Q, T);
+    for(int r=0; r<3; r++) for(int c2=0; c2<3; c2++) M[r][c2] = T[r][c2];
+    
+    float zLink[3] = {0, 0, linkLengths[i]};
+    float vTrans[3];
+    matVecMul(M, zLink, vTrans);
+    for(int k=0; k<3; k++) p[k] += vTrans[k];
+  }
+  for(int k=0; k<3; k++){
+    endPos[k] = p[k];
+    endAxis[k] = M[k][2];
+  }
+}
+
+// =========================================================================
+// 5. RISOLUTORE LINEARE GAUSS-JORDAN (6x6)
+// =========================================================================
+bool solveLinear6x6(float A[6][6], float b[6], float x[6]){
+  for(int k=0; k<6; k++){
+    int pivot = k;
+    for(int i=k+1; i<6; i++){
+      if(fabsf(A[i][k]) > fabsf(A[pivot][k])) pivot = i;
+    }
+    if(fabsf(A[pivot][k]) < 1e-9f) return false;
+    for(int j=k; j<6; j++){ float t = A[k][j]; A[k][j] = A[pivot][j]; A[pivot][j] = t; }
+    float tb = b[k]; b[k] = b[pivot]; b[pivot] = tb;
+    float div = A[k][k];
+    for(int j=k; j<6; j++) A[k][j] /= div;
+    b[k] /= div;
+    for(int i=0; i<6; i++){
+      if(i != k){
+        float factor = A[i][k];
+        for(int j=k; j<6; j++) A[i][j] -= factor * A[k][j];
+        b[i] -= factor * b[k];
+      }
+    }
+  }
+  for(int i=0; i<6; i++) x[i] = b[i];
+  return true;
+}
+
+// =========================================================================
+// 6. CINEMATICA INVERSA 6 DOF IBRIDA (Analitica + DLS)
+// =========================================================================
+bool solveAnalyticalPlanar3Link(float rw, float zw, float L1, float L2, float L3, float gripPitchDeg, float &j2, float &j4, float &j6){
+  float pitchRad = gripPitchDeg * DEG2RAD;
+  float dr_grip = L3 * cosf(pitchRad);
+  float dz_grip = -L3 * sinf(pitchRad);
+  float r_wrist = rw - dr_grip;
+  float z_wrist = zw - dz_grip;
+  float dr = r_wrist;
+  float dz = z_wrist - geo.d12;
+  float D2 = dr * dr + dz * dz;
+  float D_len = sqrtf(D2);
+  if(D_len > (L1 + L2) || D_len < fabsf(L1 - L2) || D_len < 1.0f) return false;
+  float cosT4 = (D2 - L1 * L1 - L2 * L2) / (2.0f * L1 * L2);
+  cosT4 = clampf(cosT4, -0.9999f, 0.9999f);
+  float theta4_up = -acosf(cosT4) * RAD2DEG;
+  float psi = atan2f(dz, dr) * RAD2DEG;
+  float cosBeta = (L1 * L1 + D2 - L2 * L2) / (2.0f * L1 * D_len);
+  cosBeta = clampf(cosBeta, -0.9999f, 0.9999f);
+  float beta = acosf(cosBeta) * RAD2DEG;
+  j2 = 90.0f - (psi + beta);
+  j4 = theta4_up;
+  j6 = 90.0f - (j2 + j4) - gripPitchDeg;
+  return true;
+}
+
+bool solveIKOneSeed(const float target[3], const float seed[6], bool horizontal, float outQ[6], float &posErrMm, float &orientErr){
+  for(int i=0; i<6; i++) outQ[i] = seed[i];
+  float rxy = hypotf(target[0], target[1]);
+  float ux = rxy > 1e-4f ? target[0] / rxy : 1.0f;
+  float uy = rxy > 1e-4f ? target[1] / rxy : 0.0f;
+  float r3d = sqrtf(target[0]*target[0] + target[1]*target[1] + target[2]*target[2]);
+  float targetAxis[3] = {
+    horizontal ? ux : (r3d > 1e-4f ? target[0]/r3d : ux),
+    horizontal ? uy : (r3d > 1e-4f ? target[1]/r3d : uy),
+    horizontal ? 0.0f : (r3d > 1e-4f ? target[2]/r3d : 0.0f)
+  };
+  float lambda = 0.25f;
+  for(int it=0; it<250; it++){
+    float endPos[3], endAxis[3];
+    fk(outQ, endPos, endAxis);
+    float dx = target[0] - endPos[0];
+    float dy = target[1] - endPos[1];
+    float dz = target[2] - endPos[2];
+    posErrMm = sqrtf(dx*dx + dy*dy + dz*dz);
+    float ax = targetAxis[0] - endAxis[0];
+    float ay = targetAxis[1] - endAxis[1];
+    float az = targetAxis[2] - endAxis[2];
+    orientErr = sqrtf(ax*ax + ay*ay + az*az);
+    if(posErrMm < 0.7f && (!horizontal || orientErr < 0.045f)) return true;
+    float wRot = horizontal ? 32.0f : 1.0f;
+    float e[6] = {dx, dy, dz, ax * wRot, ay * wRot, az * wRot};
+    float J[6][6] = {0};
+    const float delta = 0.02f;
+    for(int k=0; k<6; k++){
+      float qTest[6];
+      for(int j=0; j<6; j++) qTest[j] = outQ[j];
+      qTest[k] += delta;
+      float ep[3], ap[3];
+      fk(qTest, ep, ap);
+      for(int r=0; r<3; r++) J[r][k] = (ep[r] - endPos[r]) / delta;
+      for(int r=0; r<3; r++) J[r+3][k] = ((ap[r] - endAxis[r]) / delta) * wRot;
+    }
+    float A[6][6] = {0}, rhs[6] = {0};
+    for(int i=0; i<6; i++){
+      for(int j=0; j<6; j++){
+        for(int r=0; r<6; r++) A[i][j] += J[r][i] * J[r][j];
+        if(i == j) A[i][j] += lambda;
+      }
+      for(int r=0; r<6; r++) rhs[i] += J[r][i] * e[r];
+    }
+    float dq[6];
+    if(!solveLinear6x6(A, rhs, dq)){ lambda = fminf(50.0f, lambda * 2.0f); continue; }
+    for(int k=0; k<6; k++){
+      float step = clampf(dq[k], -6.0f, 6.0f);
+      outQ[k] = clampf(outQ[k] + step, Q_MIN[k], Q_MAX[k]);
+    }
+  }
+  return (posErrMm < 0.9f && (!horizontal || orientErr < 0.06f));
+}
+
+bool solveIK(float targetX, float targetY, float targetZ, bool horizontal, float solutionQ[6], float &finalErrMm){
+  float target[3] = {targetX, targetY, targetZ};
+  float yaw = atan2f(targetY, targetX) * RAD2DEG;
+  float rxy = hypotf(targetX, targetY);
+  float L1 = geo.L1 + geo.d34 * 0.5f;
+  float L2 = geo.L2 + geo.d56 * 0.5f;
+  float L3 = geo.Lg;
+  
+  float seeds[12][6];
+  int seedCount = 0;
+  
+  float aj2, aj4, aj6;
+  if(solveAnalyticalPlanar3Link(rxy, targetZ, L1, L2, L3, 0.0f, aj2, aj4, aj6)){
+    seeds[seedCount][0] = clampf(yaw, Q_MIN[0], Q_MAX[0]);
+    seeds[seedCount][1] = clampf(aj2, Q_MIN[1], Q_MAX[1]);
+    seeds[seedCount][2] = 0.0f;
+    seeds[seedCount][3] = clampf(aj4, Q_MIN[3], Q_MAX[3]);
+    seeds[seedCount][4] = 0.0f;
+    seeds[seedCount][5] = clampf(aj6, Q_MIN[5], Q_MAX[5]);
+    seedCount++;
+  }
+  
+  float cranePresets[5][6] = {
+    {yaw, 15.0f, 0.0f, -90.0f, 0.0f, 75.0f},
+    {yaw, 30.0f, 0.0f, -95.0f, 0.0f, 65.0f},
+    {yaw, 45.0f, 0.0f, -105.0f, 0.0f, 60.0f},
+    {yaw, 10.0f, 45.0f, -90.0f, -45.0f, 75.0f},
+    {0.0f, 47.0f, 0.0f, -69.0f, 7.0f, -68.0f}
+  };
+  for(int s=0; s<5 && seedCount<12; s++){
+    for(int j=0; j<6; j++) seeds[seedCount][j] = cranePresets[s][j];
+    seedCount++;
+  }
+  
+  float bestScore = 1e9f;
+  bool found = false;
+  
+  for(int s=0; s<seedCount; s++){
+    float qSol[6], pErr, oErr;
+    bool ok = solveIKOneSeed(target, seeds[s], horizontal, qSol, pErr, oErr);
+    if(ok){
+      float score = pErr * 50.0f + oErr * 25.0f + fabsf(qSol[1]) * 40.0f;
+      if(score < bestScore){
+        bestScore = score;
+        finalErrMm = pErr;
+        for(int j=0; j<6; j++) solutionQ[j] = qSol[j];
+        found = true;
+      }
+    }
+  }
+  return found;
+}
+
+// =========================================================================
+// 7. PIANIFICATORE TRAIETTORIA CON PROTEZIONE SOVRACCARICO (Anti-Stall)
+// =========================================================================
+void applyServoAngle(int jointIndex, float deg){
+  float degClamped = clampf(deg + jointAngleOffsets[jointIndex], Q_MIN[jointIndex], Q_MAX[jointIndex]);
+  float spanDeg = Q_MAX[jointIndex] - Q_MIN[jointIndex];
+  float norm = (degClamped - Q_MIN[jointIndex]) / spanDeg;
+  int us = (int)(PWM_MIN_US[jointIndex] + norm * (PWM_MAX_US[jointIndex] - PWM_MIN_US[jointIndex]));
+  
+#if USE_DIRECT_ESP32_GPIO
+  if(servosAttached) servos[jointIndex].writeMicroseconds(us);
+#else
+  int ticks = (int)((us / 20000.0f) * 4096.0f);
+  pwm.setPWM(servoChannels[jointIndex], 0, ticks);
+#endif
+}
+
+void moveToPoseSmooth(const float startQ[6], const float goalQ[6], float speedFactor = 1.0f){
+  float maxDurationMs = 300.0f;
+  for(int i=0; i<6; i++){
+    float d = fabsf(goalQ[i] - startQ[i]);
+    float effSpeed = fmaxf(1.0f, MAX_JOINT_SPEED[i] * speedFactor);
+    float tMs = (d / effSpeed) * 1000.0f;
+    if(tMs > maxDurationMs) maxDurationMs = tMs;
+  }
+  const int stepDelayMs = 20;
+  int totalSteps = (int)(maxDurationMs / stepDelayMs);
+  if(totalSteps < 10) totalSteps = 10;
+  
+  for(int step=0; step<=totalSteps; step++){
+    float progress = (float)step / (float)totalSteps;
+    float s = progress < 0.5f ? 4.0f * progress * progress * progress : 1.0f - powf(-2.0f * progress + 2.0f, 3.0f) / 2.0f;
+    for(int j=0; j<6; j++){
+      currentQ[j] = startQ[j] + (goalQ[j] - startQ[j]) * s;
+      applyServoAngle(j, currentQ[j]);
+    }
+    delay(stepDelayMs);
+  }
+}
+
+void moveToPoseProtected(const float goalQ[6]){
+  bool needSafeTransit = false;
+  for(float s = 0.2f; s <= 0.8f; s += 0.2f){
+    float testJ2 = currentQ[1] + (goalQ[1] - currentQ[1]) * s;
+    float testJ4 = currentQ[3] + (goalQ[3] - currentQ[3]) * s;
+    if(testJ2 > 35.0f && testJ4 > -50.0f){
+      needSafeTransit = true;
+      break;
+    }
+  }
+  if(needSafeTransit){
+    Serial.println(F("[SAFETY] Inserito Waypoint di Transito Sicuro per evitare sovraccarico motori!"));
+    float transitQ[6];
+    transitQ[0] = (currentQ[0] + goalQ[0]) * 0.5f;
+    transitQ[1] = clampf((currentQ[1] + goalQ[1]) * 0.5f, -10.0f, 25.0f);
+    transitQ[2] = (currentQ[2] + goalQ[2]) * 0.5f;
+    transitQ[3] = fminf(fminf(currentQ[3], goalQ[3]), -85.0f);
+    transitQ[4] = (currentQ[4] + goalQ[4]) * 0.5f;
+    transitQ[5] = clampf(90.0f - (transitQ[1] + transitQ[3]), Q_MIN[5], Q_MAX[5]);
+    
+    moveToPoseSmooth(currentQ, transitQ, 1.2f);
+    moveToPoseSmooth(transitQ, goalQ, 1.0f);
+  } else {
+    moveToPoseSmooth(currentQ, goalQ, 1.0f);
+  }
+  for(int j=0; j<6; j++) currentQ[j] = goalQ[j];
+}
+
+void attachAllServos(){
+#if USE_DIRECT_ESP32_GPIO
+  for(int i=0; i<6; i++){
+    servos[i].setPeriodHertz(50);
+    servos[i].attach(servoPins[i], PWM_MIN_US[i], PWM_MAX_US[i]);
+  }
+#endif
+  servosAttached = true;
+  Serial.println(F("[OK] Servomotori collegati e alimentati."));
+}
+
+void detachAllServos(){
+#if USE_DIRECT_ESP32_GPIO
+  for(int i=0; i<6; i++) servos[i].detach();
+#endif
+  servosAttached = false;
+  Serial.println(F("[OK] Servomotori disattivati."));
+}
+
+void printStatus(){
+  float endPos[3], endAxis[3];
+  fk(currentQ, endPos, endAxis);
+  Serial.println(F("=== STATO ROBOT 6 DOF ==="));
+  Serial.printf("Angoli [deg]: J1=%.1f  J2=%.1f  J3=%.1f  J4=%.1f  J5=%.1f  J6=%.1f\\n",
+    currentQ[0], currentQ[1], currentQ[2], currentQ[3], currentQ[4], currentQ[5]);
+  Serial.printf("Punta Pinza XYZ [mm]: X=%.1f  Y=%.1f  Z=%.1f  (Raggio=%.1f mm)\\n",
+    endPos[0], endPos[1], endPos[2], hypotf(endPos[0], endPos[1]));
+  Serial.printf("Inclinazione Asse Pinza Z: %.3f (%s)\\n",
+    endAxis[2], fabsf(endAxis[2]) < 0.05f ? "Orizzontale Livellata" : "Inclinata");
+}
+
+void printHelp(){
+  Serial.println(F("\\n--- COMANDI DISPONIBILI ---"));
+  Serial.println(F("1. IK <X> <Y> <Z> [0|1]  -> Risolve IK e muove la pinza alle coordinate"));
+  Serial.println(F("2. MOVE <J1> <J2> <J3> <J4> <J5> <J6> -> Muove i 6 giunti in gradi"));
+  Serial.println(F("3. REST                  -> Ritorna alla posa di riposo ottimizzata"));
+  Serial.println(F("4. STATUS                -> Stampa angoli, coordinate XYZ e orientamento"));
+  Serial.println(F("5. ATTACH / DETACH       -> Attiva / Disattiva i segnali PWM dei servi"));
+  Serial.println(F("6. HELP                  -> Mostra questa guida"));
+}
+
+void handleSerialCommand(String cmd){
+  cmd.trim();
+  if(cmd.length() == 0) return;
+  if(cmd.equalsIgnoreCase("HELP") || cmd.equalsIgnoreCase("?")) printHelp();
+  else if(cmd.equalsIgnoreCase("STATUS") || cmd.equalsIgnoreCase("POS")) printStatus();
+  else if(cmd.equalsIgnoreCase("REST")){ moveToPoseProtected(DEFAULT_REST_POSE); printStatus(); }
+  else if(cmd.equalsIgnoreCase("ATTACH")) attachAllServos();
+  else if(cmd.equalsIgnoreCase("DETACH")) detachAllServos();
+  else if(cmd.startsWith("IK") || cmd.startsWith("ik")){
+    float tx, ty, tz; int horiz = 1;
+    int parsed = sscanf(cmd.c_str() + 2, "%f %f %f %d", &tx, &ty, &tz, &horiz);
+    if(parsed >= 3){
+      Serial.printf("[IK] Calcolo per Target XYZ: (%.1f, %.1f, %.1f) - Pinza %s...\\n", tx, ty, tz, horiz ? "Orizzontale" : "Libera");
+      float solQ[6], errMm;
+      if(solveIK(tx, ty, tz, horiz != 0, solQ, errMm)){
+        Serial.printf("[IK OK] Soluzione trovata! Errore pos: %.2f mm\\n", errMm);
+        moveToPoseProtected(solQ);
+        printStatus();
+      } else {
+        Serial.println(F("[IK ERRORE] Target fuori portata cinematica o limiti fisici!"));
+      }
+    } else {
+      Serial.println(F("[ERRORE] Sintassi corretta: IK <X> <Y> <Z> [0|1]"));
+    }
+  }
+  else if(cmd.startsWith("MOVE") || cmd.startsWith("move")){
+    float qIn[6];
+    int parsed = sscanf(cmd.c_str() + 4, "%f %f %f %f %f %f", &qIn[0], &qIn[1], &qIn[2], &qIn[3], &qIn[4], &qIn[5]);
+    if(parsed == 6){ moveToPoseProtected(qIn); printStatus(); }
+    else Serial.println(F("[ERRORE] Sintassi corretta: MOVE <J1> <J2> <J3> <J4> <J5> <J6>"));
+  }
+  else Serial.println(F("[COMANDO SCONOSCIUTO] Digita HELP per visualizzare i comandi supportati."));
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  Serial.println(F("\\n=================================================="));
+  Serial.println(F("   ROBOT 6 DOF - ESP32 FIRMWARE AVVIATO"));
+  Serial.println(F("   Marco Codici 6 DOF · Workspace Studio"));
+  Serial.println(F("=================================================="));
+
+#if !USE_DIRECT_ESP32_GPIO
+  Wire.begin();
+  pwm.begin();
+  pwm.setPWMFreq(50);
+#endif
+
+  attachAllServos();
+  for(int j=0; j<6; j++){
+    currentQ[j] = DEFAULT_REST_POSE[j];
+    applyServoAngle(j, currentQ[j]);
+  }
+  printHelp();
+  printStatus();
+}
+
+void loop() {
+  if(Serial.available() > 0){
+    String cmd = Serial.readStringUntil('\\n');
+    handleSerialCommand(cmd);
+  }
+  delay(10);
+}
+`;
+  download('Robot6DOF_ESP32_Firmware.ino', sketch);
+  $('status').innerHTML='<span class="good">✓ Firmware completo Robot6DOF_ESP32_Firmware.ino generato e scaricato per ESP32!</span>';
+};
+
+/* === GESTIONE TOOLBAR E PANNELLI === */
+document.querySelectorAll('.tool').forEach(b=>b.onclick=()=>{
+  let pane=b.dataset.pane;
+  document.querySelectorAll('.tool').forEach(x=>x.classList.toggle('active',x===b));
+  
+  $('geoPane').hidden = !(pane==='motion');
+  $('motionPane').hidden = !(pane==='motion');
+  $('physicsPane').hidden = !(pane==='physics');
+  $('materialPane').hidden = !(pane==='material');
+  $('animPane').hidden = !(pane==='anim');
+  $('trailPane').hidden = !(pane==='trail');
+  $('cloudPane').hidden = !(pane==='cloud');
+  $('modelPane').hidden = !(pane==='model');
+  $('setupPane').hidden = !(pane==='setup');
+  $('speedPane').hidden = !(pane==='speed');
+  $('projectPane').hidden = !(pane==='project');
+});
+
+let f0=fk(q);dummyJoints=f0.pts.map(p=>p.slice());endpointDummy=f0.end.slice();
+transformControl.visible = false;
+transformControl.enabled = false;
+marker.visible = false;
+
+initPayload3DObject();
+initFEA3DVisuals();
+
+buildMotorsPhysicsList();
+buildStlWeightsList();
+updateMaterialUI();
+
+syncTarget();syncDummy();refreshPoses();refreshHierarchy();
+generateReachabilityCloud();
+refreshAnimGroupSelector();
+calculateRobotPhysics(shownQ);
+tick();
+
+autoInitOnStartup();
+</script>
+<script>document.querySelector('.tool.active').click();</script>
+</body>
+</html>

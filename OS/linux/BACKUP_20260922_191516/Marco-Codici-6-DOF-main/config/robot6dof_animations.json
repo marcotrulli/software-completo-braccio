@@ -1,0 +1,52 @@
+{
+  "version": 29,
+  "type": "animation_groups_and_sequences",
+  "timestamp": "2026-09-22T16:17:26.831Z",
+  "activeGroup": "Ciclo_Demo_Lavoro",
+  "animationGroups": {
+    "Ciclo_Demo_Lavoro": [
+      {
+        "id": "s1",
+        "name": "Posa Iniziale Home",
+        "q": [
+          0,
+          47,
+          0,
+          -69,
+          7,
+          -68
+        ],
+        "waitType": "time",
+        "waitTime": 2
+      },
+      {
+        "id": "s2",
+        "name": "Punto Presa Target",
+        "q": [
+          35,
+          10,
+          -10,
+          -65,
+          10,
+          55
+        ],
+        "waitType": "user_check",
+        "waitTime": 0
+      },
+      {
+        "id": "s3",
+        "name": "Ritorno a Riposo",
+        "q": [
+          0,
+          47,
+          0,
+          -69,
+          7,
+          -68
+        ],
+        "waitType": "time",
+        "waitTime": 1.5
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+AGGIORNAMENTO AVVIO — Robot 6 DOF
+
+1. Estrai questo pacchetto direttamente nella cartella "Marco Codici 6 DOF".
+2. Accetta la sostituzione dei file, mantenendo la struttura delle cartelle.
+3. Avvia scripts\AVVIA_SIMULATORE.bat.
+4. Quando Windows chiede l'autorizzazione, scegli "Sì".
+
+Il browser deve aprire:
+http://localhost:8765/ik_simulator_v30.html
+
+Per chiudere il server usa l'icona del robot nell'area di notifica di Windows
+e scegli "Esci".
+
+Nota: scripts\start.bat richiede Node.js installato. Il launcher C# corretto
+non richiede Node.js.

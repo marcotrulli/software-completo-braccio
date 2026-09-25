@@ -1,0 +1,17 @@
+{
+  "id": "cap_2026-09-22T22-16-31_mud8hg9v",
+  "image": "cap_2026-09-22T22-16-31_mud8hg9v.jpg",
+  "depth": "cap_2026-09-22T22-16-31_mud8hg9v.depth.bin",
+  "created": "2026-09-22T22:16:31.651Z",
+  "q": [
+    -44.59,
+    20.18,
+    -0.02,
+    41.83,
+    0.01,
+    27.46
+  ],
+  "note": "btn-scatta",
+  "joints": [],
+  "source": "kinect-capture"
+}

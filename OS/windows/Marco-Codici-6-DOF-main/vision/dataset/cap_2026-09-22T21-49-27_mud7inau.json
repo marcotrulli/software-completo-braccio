@@ -1,0 +1,38 @@
+{
+  "id": "cap_2026-09-22T21-49-27_mud7inau",
+  "image": "cap_2026-09-22T21-49-27_mud7inau.jpg",
+  "imageAnnotated": "cap_2026-09-22T21-49-27_mud7inau_annotated.jpg",
+  "depth": "cap_2026-09-22T21-49-27_mud7inau.depth.bin",
+  "created": "2026-09-22T21:49:27.798Z",
+  "q": [
+    -74.97,
+    39.53,
+    -0.01,
+    82.58,
+    0,
+    -30.06
+  ],
+  "note": "llm-approve-t2",
+  "joints": [
+    {
+      "label": "BASE",
+      "x": 236,
+      "y": 306,
+      "z": 1010
+    },
+    {
+      "label": "G1",
+      "x": 329,
+      "y": 205,
+      "z": 919
+    },
+    {
+      "label": "G2",
+      "x": 444,
+      "y": 239,
+      "z": 965
+    }
+  ],
+  "approved": true,
+  "source": "llm-vision-pair"
+}

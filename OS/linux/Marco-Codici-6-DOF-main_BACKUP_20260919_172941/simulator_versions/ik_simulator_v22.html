@@ -1,0 +1,2080 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Digital Twin — Braccio 6 DOF v22 (Animation Group Creator & Timeline)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+<style>
+:root{
+  --left-w: 400px;
+  --right-w: 330px;
+  --bg:#070b0e;
+  --bg-gradient:radial-gradient(circle at 50% 30%, #0d171b 0%, #06090c 100%);
+  --panel:rgba(14, 23, 27, 0.85);
+  --panel-card:rgba(18, 30, 36, 0.70);
+  --line:rgba(98, 230, 199, 0.15);
+  --line-strong:rgba(98, 230, 199, 0.35);
+  --ink:#e4f0f2;
+  --muted:#839aa0;
+  --a:#62e6c7;
+  --a-glow:rgba(98, 230, 199, 0.35);
+  --warn:#ffbc5c;
+  --bad:#ff7171;
+  --purple:#c084fc;
+  --trail:#00f0ff;
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html,body,#app{height:100%;margin:0;background:var(--bg);color:var(--ink);overflow:hidden}
+
+#app{
+  display:grid;
+  grid-template-columns: var(--left-w) 5px 1fr 5px var(--right-w);
+  position:relative;
+  transition:none;
+}
+#app.hide-left{grid-template-columns: 0px 0px 1fr 5px var(--right-w)}
+#app.hide-right{grid-template-columns: var(--left-w) 5px 1fr 0px 0px}
+#app.hide-both{grid-template-columns: 0px 0px 1fr 0px 0px}
+
+/* Splitter / Resizer Handle */
+.resizer{
+  width:5px;
+  background:rgba(98, 230, 199, 0.08);
+  cursor:col-resize;
+  z-index:25;
+  transition:background .2s, box-shadow .2s;
+  position:relative;
+}
+.resizer:hover, .resizer.dragging{
+  background:var(--a);
+  box-shadow:0 0 10px var(--a);
+}
+.resizer::after{
+  content:'';
+  position:absolute;
+  top:50%;
+  left:1px;
+  transform:translateY(-50%);
+  width:3px;
+  height:30px;
+  border-left:1px dotted rgba(98,230,199,0.5);
+  border-right:1px dotted rgba(98,230,199,0.5);
+}
+
+.panel{
+  padding:16px 14px;
+  background:var(--panel);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  overflow-y:auto;
+  overflow-x:hidden;
+  box-shadow:0 8px 32px rgba(0,0,0,0.45);
+  z-index:10;
+  min-width:0;
+}
+.panel::-webkit-scrollbar{width:5px}
+.panel::-webkit-scrollbar-track{background:transparent}
+.panel::-webkit-scrollbar-thumb{background:rgba(98,230,199,0.2);border-radius:3px}
+.panel::-webkit-scrollbar-thumb:hover{background:var(--a)}
+
+.hide-left .panel:first-child{display:none}
+.hide-right .panel.right{display:none}
+
+h1{
+  font:700 13px 'JetBrains Mono',monospace;
+  letter-spacing:.12em;
+  color:var(--a);
+  margin:0 0 4px;
+  text-transform:uppercase;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  white-space:nowrap;
+}
+h1::before{
+  content:'';
+  display:inline-block;
+  width:8px;height:8px;
+  background:var(--a);
+  border-radius:50%;
+  box-shadow:0 0 10px var(--a);
+}
+.sub,h2,.hint{font:11px 'JetBrains Mono',monospace;color:var(--muted)}
+h2{
+  letter-spacing:.08em;
+  margin:0 0 10px;
+  text-transform:uppercase;
+  color:#b6d2d7;
+  font-size:11px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+.block{
+  background:var(--panel-card);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:12px;
+  margin:0 0 14px;
+  box-shadow:0 4px 16px rgba(0,0,0,0.25);
+  transition:border-color .2s;
+}
+.block:hover{border-color:var(--line-strong)}
+
+.row{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  margin:8px 0;
+}
+.row label{
+  flex: 0 0 120px;
+  font:11px 'JetBrains Mono',monospace;
+  color:#cde0e3;
+  white-space:nowrap;
+}
+.row input[type=number]{width:80px;flex-shrink:0}
+.row input[type=range]{flex:1;min-width:60px}
+.row select{
+  flex:1;
+  min-width:0;
+  background:#091215;
+  color:var(--ink);
+  border:1px solid var(--line);
+  border-radius:5px;
+  padding:5px 6px;
+  font:11px 'JetBrains Mono',monospace;
+  outline:none;
+}
+.row select:focus{border-color:var(--a)}
+
+input{
+  background:#091215;
+  color:var(--ink);
+  border:1px solid var(--line);
+  border-radius:5px;
+  padding:5px 7px;
+  font:11px 'JetBrains Mono',monospace;
+  outline:none;
+  transition:border-color .2s, box-shadow .2s;
+}
+input:focus{border-color:var(--a);box-shadow:0 0 8px var(--a-glow)}
+
+/* Custom Sleek Slider */
+input[type=range]{
+  -webkit-appearance:none;
+  height:5px;
+  background:#0b1619;
+  border:1px solid var(--line);
+  border-radius:3px;
+  outline:none;
+  padding:0;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  width:14px;height:14px;
+  border-radius:50%;
+  background:var(--a);
+  cursor:pointer;
+  box-shadow:0 0 8px var(--a);
+  transition:transform .1s;
+}
+input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2)}
+
+.val{
+  width:58px;
+  text-align:right;
+  color:var(--a);
+  font:11px 'JetBrains Mono',monospace;
+  flex-shrink:0;
+}
+
+button{
+  width:100%;
+  margin-top:7px;
+  padding:8px 10px;
+  background:linear-gradient(180deg, #18282e 0%, #101c20 100%);
+  color:var(--ink);
+  border:1px solid var(--line);
+  border-radius:6px;
+  cursor:pointer;
+  font:600 11px 'JetBrains Mono',monospace;
+  transition:all .18s ease;
+  box-shadow:0 2px 6px rgba(0,0,0,0.3);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+button:hover{
+  border-color:var(--a);
+  background:linear-gradient(180deg, #22373f 0%, #16262c 100%);
+  box-shadow:0 0 12px var(--a-glow);
+  transform:translateY(-1px);
+}
+button:active{transform:translateY(0)}
+
+button.primary{
+  background:linear-gradient(180deg, #62e6c7 0%, #44c2a4 100%);
+  color:#041a16;
+  border:0;
+  font-weight:700;
+  box-shadow:0 0 14px var(--a-glow);
+}
+button.primary:hover{
+  background:linear-gradient(180deg, #7cf8da 0%, #56d4b6 100%);
+  box-shadow:0 0 20px rgba(98,230,199,0.55);
+}
+
+button.purple{
+  background:linear-gradient(180deg, #442466 0%, #2a1542 100%);
+  border-color:var(--purple);
+  color:#f5ebff;
+}
+button.purple:hover{
+  background:linear-gradient(180deg, #5b3188 0%, #3a1d5a 100%);
+  box-shadow:0 0 14px rgba(192,132,252,0.4);
+}
+
+button.trail-btn{
+  background:linear-gradient(180deg, #0e373d 0%, #072226 100%);
+  border-color:var(--trail);
+  color:#e0fbff;
+}
+button.trail-btn:hover{
+  background:linear-gradient(180deg, #184f57 0%, #0e363d 100%);
+  box-shadow:0 0 14px rgba(0,240,255,0.35);
+}
+
+.tabs{display:flex;gap:5px;margin-bottom:8px}
+.tabs button{margin:0;border-radius:5px;background:#0d181b}
+.tabs button.active{
+  border-color:var(--a);
+  color:var(--a);
+  background:#142d32;
+  box-shadow:0 0 10px rgba(98,230,199,0.25);
+}
+
+.cloud-modes{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:6px 0 10px}
+.cloud-modes button{margin:0;padding:8px 4px;font-size:10.5px;text-align:center;line-height:1.3;background:#0a1316;border:1px solid var(--line);color:var(--muted)}
+.cloud-modes button.active{
+  border-color:var(--purple);
+  background:rgba(68,36,102,0.5);
+  color:#f3e8ff;
+  font-weight:700;
+  box-shadow:0 0 12px rgba(192,132,252,0.3);
+}
+
+.status{
+  font:11px/1.6 'JetBrains Mono',monospace;
+  background:#091215;
+  padding:9px 11px;
+  border:1px solid var(--line);
+  border-radius:6px;
+  word-break:break-word;
+}
+.good{color:var(--a)}
+.bad{color:var(--bad)}
+.warn{color:var(--warn)}
+.purple-txt{color:var(--purple)}
+.trail-txt{color:var(--trail)}
+
+#view{
+  position:relative;
+  min-width:0;
+  background:var(--bg-gradient);
+}
+.hint{position:absolute;left:14px;bottom:12px;pointer-events:none;z-index:5;background:rgba(0,0,0,0.5);padding:4px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.05)}
+
+/* === BARRA VISTE CAD RAPIDE (FLOATING HUD) === */
+.cad-toolbar{
+  position:absolute;
+  top:14px;
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  gap:4px;
+  background:rgba(10, 18, 22, 0.85);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  padding:4px 6px;
+  border-radius:8px;
+  border:1px solid var(--line);
+  box-shadow:0 6px 24px rgba(0,0,0,0.5);
+  z-index:15;
+}
+.cad-btn{
+  width:auto;
+  margin:0;
+  padding:5px 10px;
+  font:600 10.5px 'JetBrains Mono',monospace;
+  background:transparent;
+  border:1px solid transparent;
+  color:#a1bec4;
+  border-radius:5px;
+  box-shadow:none;
+}
+.cad-btn:hover{
+  background:rgba(98,230,199,0.12);
+  border-color:var(--line);
+  color:var(--a);
+  box-shadow:none;
+  transform:none;
+}
+.cad-btn.active{
+  background:rgba(98,230,199,0.18);
+  border-color:var(--a);
+  color:var(--a);
+  font-weight:700;
+}
+
+/* Pulsanti collasso pannelli laterali */
+.toggle-panel-btn{
+  position:absolute;
+  top:14px;
+  width:28px;height:28px;
+  margin:0;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(10, 18, 22, 0.82);
+  border:1px solid var(--line);
+  border-radius:6px;
+  color:var(--a);
+  z-index:15;
+  cursor:pointer;
+}
+.toggle-panel-btn:hover{background:#172e35;border-color:var(--a)}
+#toggleLeftBtn{left:14px}
+#toggleRightBtn{right:14px}
+
+.badge{display:inline-block;padding:2px 6px;border-radius:4px;font:10px 'JetBrains Mono',monospace;margin-left:5px}
+.badge-green{background:#0b2620;color:var(--a);border:1px solid #1a5649}
+.badge-purple{background:#241935;color:var(--purple);border:1px solid #58327d}
+.badge-blue{background:#0e292d;color:var(--trail);border:1px solid #1c626b}
+.badge-gold{background:#26200d;color:var(--warn);border:1px solid #6b531c}
+
+/* Toolnav Tabs */
+.toolnav{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap:5px;
+  margin:12px 0 14px;
+}
+.toolnav button{
+  margin:0;
+  padding:7px 5px;
+  font-size:10.5px;
+  border-radius:5px;
+  white-space:nowrap;
+  text-align:center;
+}
+.toolnav button.active{
+  background:linear-gradient(180deg, #62e6c7 0%, #44c2a4 100%);
+  color:#041a16;
+  font-weight:700;
+  box-shadow:0 0 12px var(--a-glow);
+}
+.toolpane[hidden]{display:none}
+
+.treeItem{
+  padding:6px 8px;
+  margin:3px 0;
+  border:1px solid transparent;
+  border-radius:5px;
+  font:11px 'JetBrains Mono',monospace;
+  cursor:pointer;
+  transition:all .15s;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.treeItem:hover,.treeItem.selected{border-color:var(--a);background:rgba(23,48,56,0.65)}
+.treeItem:before{content:'◇ ';color:var(--a)}
+
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}
+.stat-box{
+  background:#081113;
+  border:1px solid var(--line);
+  border-radius:6px;
+  padding:6px 8px;
+  font:10.5px 'JetBrains Mono',monospace;
+}
+.stat-box .num{color:var(--a);font-weight:700;font-size:12px}
+.stat-box.trail .num{color:var(--trail)}
+.stat-box.purple .num{color:var(--purple)}
+
+/* Timeline Step Cards */
+.step-list{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin:10px 0;
+  max-height:260px;
+  overflow-y:auto;
+  padding-right:4px;
+}
+.step-card{
+  background:#0b1518;
+  border:1px solid var(--line);
+  border-radius:6px;
+  padding:7px 9px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  font:11px 'JetBrains Mono',monospace;
+  transition:all .15s;
+}
+.step-card:hover{border-color:var(--a);background:#101f24}
+.step-card.active{
+  border-color:var(--warn);
+  background:rgba(255,188,92,0.12);
+  box-shadow:0 0 10px rgba(255,188,92,0.3);
+}
+.step-info{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.step-title{color:var(--ink);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.step-meta{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px}
+.step-actions{display:flex;gap:3px;flex-shrink:0}
+.step-actions button{
+  width:auto;margin:0;padding:3px 6px;font-size:10px;border-radius:4px;background:#152227;
+}
+.step-actions button:hover{background:var(--a);color:#06231e}
+</style>
+</head>
+<body>
+<div id="app">
+<aside class="panel">
+  <h1>DIGITAL TWIN 6 DOF</h1>
+  <div class="sub">Marco Codici 6 DOF · Workspace Studio v22</div>
+  
+  <div class="toolnav">
+    <button class="tool active" data-pane="motion">Movimento</button>
+    <button class="tool" data-pane="anim">🎬 Animazioni</button>
+    <button class="tool" data-pane="trail">Scia 3D</button>
+    <button class="tool" data-pane="cloud">Nuvola 3D</button>
+    <button class="tool" data-pane="model">Modello STL</button>
+    <button class="tool" data-pane="setup">Giunti / dummy</button>
+    <button class="tool" data-pane="speed">Velocità motori</button>
+    <button class="tool" data-pane="project">Progetto & JSON</button>
+  </div>
+
+  <!-- PANNELLO MOVIMENTO & GEOMETRIA -->
+  <section class="block" id="geoPane">
+    <h2>Geometria Braccio</h2>
+    <div class="row"><label>J1 → J2</label><input id="d12" type="number" value="50"></div>
+    <div class="row"><label>J2 → J3</label><input id="L1" type="number" value="220"></div>
+    <div class="row"><label>J3 → J4</label><input id="d34" type="number" value="50"></div>
+    <div class="row"><label>J4 → J5</label><input id="L2" type="number" value="220"></div>
+    <div class="row"><label>J5 → J6</label><input id="d56" type="number" value="50"></div>
+    <div class="row"><label>J6 → pinza</label><input id="Lg" type="number" value="150"></div>
+    <div class="row"><label>Diametro bracci</label><input id="diameter" type="number" min="4" max="60" value="30"></div>
+    <button id="applyGeo">Applica geometria & ricalcola</button>
+  </section>
+
+  <section class="block" id="motionPane">
+    <h2>Modalità Controllo</h2>
+    <div class="tabs"><button class="tab active" data-tab="fk">Manuale (FK)</button><button class="tab" data-tab="ik">Target (IK)</button></div>
+    <div id="fk">
+      <div id="sliders"></div>
+      <button id="vertical">Posa verticale iniziale</button>
+      <button id="rest">Posa di riposo (0, 47, 0, -69, 7, -68)</button>
+    </div>
+    <div id="ik" hidden>
+      <div class="sub" style="margin-bottom:6px">💡 Trascina il Gizmo 3D con frecce X/Y/Z sulla scena.</div>
+      <div class="row"><label>X Target</label><input id="tx" type="number" value="35"></div>
+      <div class="row"><label>Y Target</label><input id="ty" type="number" value="-427"></div>
+      <div class="row"><label>Z Target</label><input id="tz" type="number" value="210"></div>
+      <div class="row"><label>Pinza orizz.</label><input id="horizontal" type="checkbox" checked><span class="val"></span></div>
+      <div class="row">
+        <label>Postura Braccio</label>
+        <select id="postureMode">
+          <option value="crane">🏗️ Gru / U Rovesciata (J2 alto)</option>
+          <option value="free">Libera / Standard</option>
+          <option value="scoop">Gomito Basso (Scoop)</option>
+        </select>
+      </div>
+      <div class="row"><label>Ciclo Rest</label><input id="useCycle" type="checkbox" checked><span class="val">Rest→T→3s→Rest</span></div>
+      <div class="row"><label>Protezione motori</label><input id="smoothWeight" type="range" min="0" max="100" value="100"><span class="val" id="smoothWeightVal">100%</span></div>
+      <button class="primary" id="solve">Esegui ciclo Target</button>
+      <button id="solveDirect">Vai solo al Target (Diretto)</button>
+      <button id="showTarget">Mostra/nascondi Gizmo Target</button>
+    </div>
+  </section>
+
+  <!-- PANNELLO ANIMAZIONI / SEQUENZE DI LAVORO (NUOVO CREATOR) -->
+  <section class="block" id="animPane" hidden>
+    <h2>🎬 Gruppi di Animazione (Sequencer)</h2>
+    <div class="sub">Programma routine multi-punto con tempi di attesa o conferma utente.</div>
+    
+    <div class="row" style="margin-top:10px">
+      <label>Gruppo attivo</label>
+      <select id="animGroupSelect"></select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+      <button id="btnNewAnimGroup" style="margin:0">+ Nuovo Gruppo</button>
+      <button id="btnDelAnimGroup" style="margin:0">🗑️ Elimina</button>
+    </div>
+
+    <h2 style="margin-top:14px">Timeline Passi</h2>
+    <div class="step-list" id="animStepList"></div>
+
+    <!-- AGGIUNGI PASSO -->
+    <div class="block" style="margin-top:10px;padding:10px;background:#091215">
+      <h2 style="font-size:10.5px;margin:0 0 6px">➕ Aggiungi Passo alla Timeline</h2>
+      <div class="row">
+        <label>Posa Target</label>
+        <select id="newStepPoseSelect">
+          <option value="__current__">📍 Posa attuale del braccio</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Azione dopo arrivo</label>
+        <select id="newStepWaitType">
+          <option value="time">⏳ Aspetta secondi...</option>
+          <option value="user_check">👤 Aspetta Check Utente</option>
+          <option value="none">⚡ Nessuna attesa (Immediato)</option>
+        </select>
+      </div>
+      <div class="row" id="newStepTimeRow">
+        <label>Secondi attesa</label>
+        <input id="newStepWaitTime" type="number" step="0.5" min="0.5" max="60" value="3.0">
+        <span class="val">sec</span>
+      </div>
+      <button class="primary" id="btnAddStepToGroup">➕ Inserisci Passo</button>
+    </div>
+
+    <!-- CONTROLLI ESECUZIONE -->
+    <h2 style="margin-top:14px">Controllo Player</h2>
+    <div class="row">
+      <label>Loop continuo</label>
+      <input id="animLoopCheck" type="checkbox">
+      <span class="val"><span class="sub" style="font-size:10px">Ripeti ciclo</span></span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+      <button class="primary" id="btnPlayAnimation">▶ Avvia Routine</button>
+      <button id="btnStopAnimation">⏹️ Stop</button>
+    </div>
+    <button class="purple" id="btnUserCheckContinue" style="margin-top:6px;display:none">⏭️ Continua (Check Utente ✓)</button>
+  </section>
+
+  <!-- PANNELLO SCIA TRAIETTORIA 3D -->
+  <section class="block" id="trailPane">
+    <h2>Scia Traiettoria (Motion Trail)</h2>
+    <div class="sub">Traccia il percorso 3D disegnato dalla punta (endpoint) della pinza.</div>
+    <div class="row" style="margin-top:10px">
+      <label>Traccia scia</label>
+      <input id="enableTrail" type="checkbox" checked>
+      <span class="val"><span class="badge badge-blue" id="trailStateBadge">ATTIVA</span></span>
+    </div>
+    <div class="row">
+      <label>Spessore</label>
+      <input id="trailThickness" type="range" min="0.5" max="10" step="0.5" value="3">
+      <span class="val" id="trailThicknessVal">3.0 mm</span>
+    </div>
+    <div class="row">
+      <label>Trasparenza</label>
+      <input id="trailOpacity" type="range" min="10" max="100" step="5" value="85">
+      <span class="val" id="trailOpacityVal">85%</span>
+    </div>
+    <div class="row">
+      <label>Colore Scia</label>
+      <select id="trailColor">
+        <option value="#00f0ff">Ciano Neon Elettrico</option>
+        <option value="#62e6c7">Smeraldo Cyber</option>
+        <option value="#ffbc5c">Oro / Ambra Laser</option>
+        <option value="#c084fc">Viola Plasma</option>
+        <option value="#ff5c5c">Rosso Corallo</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Auto-cancella</label>
+      <input id="trailAutoClear" type="checkbox" checked>
+      <span class="val"><span class="sub" style="font-size:10px">a fine ciclo</span></span>
+    </div>
+    <button class="trail-btn" id="clearTrailBtn">🗑️ Cancella Scia Ora</button>
+    <div class="stat-grid">
+      <div class="stat-box trail">Lunghezza:<br><span class="num" id="trailLengthStat">0.0</span> mm</div>
+      <div class="stat-box trail">Punti:<br><span class="num" id="trailPointsStat">0</span></div>
+    </div>
+  </section>
+
+  <!-- PANNELLO NUVOLA WORKSPACE -->
+  <section class="block" id="cloudPane">
+    <h2>Nuvola Workspace (Reachability)</h2>
+    <div class="sub">Seleziona la modalità di calcolo dell'inviluppo volumetrico:</div>
+    
+    <div class="cloud-modes">
+      <button id="btnCloudFree" class="active" data-mode="free">🌐 Senza Vincolo<br><span style="font-size:9.5px;color:var(--muted)">6 DOF Libero</span></button>
+      <button id="btnCloudHori" data-mode="horizontal">📐 Con Pinza Orizz.<br><span style="font-size:9.5px;color:var(--muted)">Livellato (±5°)</span></button>
+    </div>
+
+    <div class="row">
+      <label>Mostra nuvola</label>
+      <input id="showCloud" type="checkbox">
+      <span class="val"><span class="badge badge-purple" id="cloudStateBadge">OFF</span></span>
+    </div>
+    <div class="row">
+      <label>Vista sezione</label>
+      <select id="cloudSection">
+        <option value="volume">Volume 3D Completo</option>
+        <option value="slice">Sezione Laterale Piano XZ (Y≈0)</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Punti nuvola</label>
+      <input id="cloudDensity" type="range" min="5000" max="50000" step="5000" value="20000">
+      <span class="val" id="cloudDensityVal">20k</span>
+    </div>
+    <div class="row">
+      <label>Dimensione</label>
+      <input id="cloudPointSize" type="range" min="1" max="8" step="0.5" value="3.5">
+      <span class="val" id="cloudPointSizeVal">3.5px</span>
+    </div>
+    <div class="row">
+      <label>Trasparenza</label>
+      <input id="cloudOpacity" type="range" min="10" max="100" step="5" value="45">
+      <span class="val" id="cloudOpacityVal">45%</span>
+    </div>
+    <div class="row">
+      <label>Gradiente</label>
+      <select id="cloudColorMap">
+        <option value="dist">Distanza dal centro (RGB)</option>
+        <option value="height">Altezza Z (Gradient)</option>
+        <option value="neon">Hologram Cyber Cyan/Purple</option>
+      </select>
+    </div>
+    <button class="purple" id="recalcCloud">⚡ Rigenera Nuvola</button>
+    <div class="stat-grid" id="cloudStats">
+      <div class="stat-box purple">Raggio Max:<br><span class="num" id="statRmax">--</span> mm</div>
+      <div class="stat-box purple">Raggio Min:<br><span class="num" id="statRmin">--</span> mm</div>
+      <div class="stat-box purple">Z Massima:<br><span class="num" id="statZmax">--</span> mm</div>
+      <div class="stat-box purple">Z Minima:<br><span class="num" id="statZmin">--</span> mm</div>
+    </div>
+  </section>
+
+  <!-- PANNELLO VELOCITÀ MOTORI -->
+  <section class="block" id="speedPane">
+    <h2>Velocità Motori e Giunti</h2>
+    <div class="sub">Regola la velocità angolare massima (°/s) di ogni asse ed il moltiplicatore globale.</div>
+    <div class="row"><label>Velocità globale</label><input id="globalSpeed" type="range" min="10" max="200" value="100"><span class="val" id="globalSpeedVal">100%</span></div>
+    <div id="speedSliders"></div>
+    <button id="resetSpeeds">Ripristina velocità predefinite</button>
+  </section>
+
+  <!-- PANNELLO STL -->
+  <section class="block" id="modelPane">
+    <h2>STL · pezzi del braccio</h2>
+    <button class="primary" id="scanFolder">Collega / Ricarica STL da cartella</button>
+    <div class="sub" style="margin-top:6px">Con DigitalTwin6DOF.exe tutti gli STL e i JSON vengono caricati automaticamente all'avvio!</div>
+    <div style="margin-top:10px" class="sub">Caricamento manuale file .stl:</div>
+    <input id="stlFiles" type="file" accept=".stl" multiple>
+    <div class="row"><label>Pezzo selez.</label><select id="assetSelect"><option>Nessun STL</option></select></div>
+    <div class="row"><label>Scala</label><input id="assetScale" type="number" step="0.001" value="1"></div>
+    <div class="row"><label>Offset X</label><input id="assetX" type="number" value="0"></div>
+    <div class="row"><label>Offset Y</label><input id="assetY" type="number" value="0"></div>
+    <div class="row"><label>Offset Z</label><input id="assetZ" type="number" value="0"></div>
+    <div class="row"><label>Rot. X/Y/Z</label><input id="assetRX" type="number" value="0"><input id="assetRY" type="number" value="0"><input id="assetRZ" type="number" value="0"></div>
+    <div class="row"><label>Braccio rigido</label><select id="assetAttach"><option value="-1">Mondo (fisso)</option><option value="0">Braccio 1 · J1 → J2</option><option value="1">Braccio 2 · J2 → J3</option><option value="2">Braccio 3 · J3 → J4</option><option value="3">Braccio 4 · J4 → J5</option><option value="4">Braccio 5 · J5 → J6</option><option value="5">Braccio 6 · J6 → pinza</option><option value="6">End effector / pinza</option></select></div>
+    <button id="applyAsset">Applica al pezzo STL</button>
+    <button id="deleteAsset">Elimina STL selezionato</button>
+  </section>
+
+  <!-- PANNELLO SETUP / DUMMY -->
+  <section class="block" id="setupPane">
+    <h2>Dummy point e giunti</h2>
+    <div class="row"><label>Dummy</label><select id="dummySelect"><option value="target">Target</option><option value="endpoint">Endpoint pinza</option><option value="0">J1 base</option><option value="1">J2</option><option value="2">J3</option><option value="3">J4</option><option value="4">J5</option><option value="5">J6</option><option value="6">Endpoint riferimento</option></select></div>
+    <div class="row"><label>X</label><input id="dummyX" type="number" value="0"></div>
+    <div class="row"><label>Y</label><input id="dummyY" type="number" value="0"></div>
+    <div class="row"><label>Z</label><input id="dummyZ" type="number" value="0"></div>
+    <button id="applyDummy">Posiziona dummy</button>
+    <button id="captureJoints">Cattura giunti dalla posa</button>
+    <button id="useDummyGeometry">Usa distanze dummy nell’IK</button>
+  </section>
+
+  <!-- PANNELLO PROGETTO & JSON SEPARATI -->
+  <section class="block" id="projectPane">
+    <h2>Pose & File JSON Separati</h2>
+    <div class="row"><label>Nome posa</label><input id="poseName" type="text" value="rest_point"></div>
+    <button id="savePose">Salva posa corrente</button>
+    <select id="poseList" size="5" style="width:100%;margin-top:7px"></select>
+    <button id="playPose">Simula posa selezionata</button>
+    <button id="deletePose">Elimina posa</button>
+
+    <h2 style="margin-top:16px">Gestione File Disco (Marco Codici 6 DOF)</h2>
+    <button id="writeProject" class="primary">Salva entrambi i file JSON ora</button>
+    <div class="sub" style="margin-top:8px;line-height:1.5">
+      📁 <b>robot6dof_stl_config.json</b>: Geometria braccio e parametri 8 pezzi STL.<br>
+      📁 <b>robot6dof_saved_poses.json</b>: Pose, gruppi di animazione e velocità motori.<br>
+    </div>
+    <button id="exportCpp" style="margin-top:12px">Esporta IK C++ completa ESP32</button>
+  </section>
+</aside>
+
+<!-- RESIZER SINISTRO TRASCINABILE -->
+<div class="resizer" id="resizerLeft" title="Trascina per allargare/restringere il pannello sinistro"></div>
+
+<main id="view">
+  <!-- PULSANTI TOGGLE PANNELLI -->
+  <button class="toggle-panel-btn" id="toggleLeftBtn" title="Mostra/Nascondi Pannello Sinistro">◀</button>
+  <button class="toggle-panel-btn" id="toggleRightBtn" title="Mostra/Nascondi Pannello Destro">▶</button>
+
+  <!-- BARRA VISTE CAD RAPIDE (FLOATING HUD) -->
+  <div class="cad-toolbar">
+    <button class="cad-btn active" id="viewIso">Isometrica</button>
+    <button class="cad-btn" id="viewTop">Alto (Z)</button>
+    <button class="cad-btn" id="viewFront">Fronte (XZ)</button>
+    <button class="cad-btn" id="viewSide">Lato (YZ)</button>
+    <button class="cad-btn" id="viewReset">Centra</button>
+    <button class="cad-btn" id="viewFull" title="Schermo Intero">⛶ Full</button>
+  </div>
+
+  <div class="hint">🎯 GIZMO 3D: trascina frecce X/Y/Z · Ruota vista: trascina sfondo · Ridimensiona pannelli: trascina i bordi verticali</div>
+</main>
+
+<!-- RESIZER DESTRO TRASCINABILE -->
+<div class="resizer" id="resizerRight" title="Trascina per allargare/restringere il pannello destro"></div>
+
+<aside class="panel right">
+  <h1>SCENA / DIAGNOSTICA</h1>
+  <section class="block">
+    <h2>Stato Sincronizzazione</h2>
+    <div class="status" id="persistenceStatus">
+      Modalità: <span class="good" id="modeBadge">Rilevamento...</span><br>
+      Cartella: <span class="good" id="folderNameBadge">Marco Codici 6 DOF</span><br>
+      File STL: <span class="good" id="stlCountBadge">0 caricati</span>
+    </div>
+  </section>
+  <section class="block">
+    <h2>Stato Animazione / Routine</h2>
+    <div class="status" id="animLiveStatus">
+      Routine: <span class="good" id="animCurrentGroupLbl">Nessuna attiva</span><br>
+      Passo: <span id="animCurrentStepLbl" class="sub">--</span><br>
+      Azione: <span id="animCurrentActionLbl" class="sub">Pronto</span>
+    </div>
+  </section>
+  <section class="block">
+    <h2>Gerarchia pezzi</h2>
+    <div class="sub">Clicca un elemento per selezionarlo e colorarlo nella scena.</div>
+    <div id="hierarchy"></div>
+  </section>
+  <section class="block">
+    <h2>Soluzione IK</h2>
+    <div class="status" id="status">Posa iniziale di riposo (Rest).</div>
+  </section>
+  <section class="block">
+    <h2>Dati Scia Traiettoria</h2>
+    <div class="status" id="trailStatus">
+      Stato tracciamento: <span id="trailActiveState" class="trail-txt">In attesa movimento</span><br>
+      Punti curva: <span id="trailPointsCount">0</span><br>
+      Lunghezza: <span id="trailLenLive">0.0 mm</span>
+    </div>
+  </section>
+  <section class="block">
+    <h2>Verifica Workspace Target</h2>
+    <div class="status" id="targetReachStatus">
+      Modalità nuvola: <span id="cloudActiveModeLbl" class="purple-txt">Senza Vincolo (6 DOF)</span><br>
+      Distanza raggio: <span id="targetRadius" class="good">-- mm</span><br>
+      Stato volume: <span id="targetInsideVol" class="good">In attesa calcolo...</span>
+    </div>
+  </section>
+  <section class="block">
+    <h2>Angoli giunti</h2>
+    <div class="status" id="angles"></div>
+  </section>
+  <section class="block">
+    <h2>Punto pinza (Endpoint)</h2>
+    <div class="status" id="position"></div>
+  </section>
+</aside>
+</div>
+
+<script>
+const D=Math.PI/180, R=180/Math.PI, limits=[[-135,135],[-90,90],[-135,135],[-90,90],[-135,135],[-90,90]];
+const defaultRestPose=[0,47,0,-69,7,-68];
+const defaultJointSpeeds=[20,15,23,34,90,90];
+let jointSpeeds=defaultJointSpeeds.slice(), globalSpeed=100;
+let geo={d12:50,L1:220,d34:50,L2:220,d56:50,Lg:150,diameter:30}, q=defaultRestPose.slice(), shownQ=q.slice(), target=[34.5,-427.2,210.2], anim=null, smoothWeight=100;
+const $=id=>document.getElementById(id), clamp=(x,a,b)=>Math.max(a,Math.min(b,x)), norm=v=>Math.hypot(...v), sub=(a,b)=>a.map((x,i)=>x-b[i]);
+function mul(A,B){let C=[[0,0,0],[0,0,0],[0,0,0]];for(let i=0;i<3;i++)for(let j=0;j<3;j++)for(let k=0;k<3;k++)C[i][j]+=A[i][k]*B[k][j];return C}
+function mv(A,v){return A.map(r=>r[0]*v[0]+r[1]*v[1]+r[2]*v[2])}
+function rz(a){let c=Math.cos(a),s=Math.sin(a);return [[c,-s,0],[s,c,0],[0,0,1]]}
+function ry(a){let c=Math.cos(a),s=Math.sin(a);return [[c,0,s],[0,1,0],[-s,0,c]]}
+
+/* === CINEMATICA DIRETTA === */
+function fk(deg){
+  let M=[[1,0,0],[0,1,0],[0,0,1]],p=[0,0,0],pts=[p.slice()],frames=[];
+  [[0,geo.d12,1],[1,geo.L1,0],[2,geo.d34,1],[3,geo.L2,0],[4,geo.d56,1],[5,geo.Lg,0]].forEach(([i,l,z])=>{
+    M=mul(M,z?rz(deg[i]*D):ry(deg[i]*D));
+    frames.push(M.map(row=>row.slice()));
+    p=p.map((v,k)=>v+mv(M,[0,0,l])[k]);
+    pts.push(p.slice());
+  });
+  return {pts,frames,end:p,axis:mv(M,[0,0,1])};
+}
+
+function jac(deg,orient){
+  let b=fk(deg), rows=orient?4:3,J=Array.from({length:rows},()=>Array(6));
+  for(let i=0;i<6;i++){
+    let p=deg.slice();p[i]+=.02;let f=fk(p);
+    for(let r=0;r<3;r++)J[r][i]=(f.end[r]-b.end[r])/.02;
+    if(orient)J[3][i]=(f.axis[2]-b.axis[2])/.02;
+  }
+  return J;
+}
+
+function solveLinear(A,b){
+  let n=b.length,M=A.map((r,i)=>r.slice().concat(b[i]));
+  for(let k=0;k<n;k++){
+    let p=k;
+    for(let i=k+1;i<n;i++)if(Math.abs(M[i][k])>Math.abs(M[p][k]))p=i;
+    if(Math.abs(M[p][k])<1e-10)return null;
+    [M[k],M[p]]=[M[p],M[k]];
+    let z=M[k][k];
+    for(let j=k;j<=n;j++)M[k][j]/=z;
+    for(let i=0;i<n;i++)if(i!==k){
+      let f=M[i][k];
+      for(let j=k;j<=n;j++)M[i][j]-=f*M[k][j];
+    }
+  }
+  return M.map(r=>r[n]);
+}
+
+/* === VELOCITÀ MOTORI === */
+function buildSpeedSliders(){
+  let container=$('speedSliders');
+  container.innerHTML='';
+  for(let i=0;i<6;i++){
+    let d=document.createElement('div');
+    d.className='row';
+    d.innerHTML=`<label>Velocità J${i+1}</label><input type="range" min="10" max="180" value="${jointSpeeds[i]}"><span class="val">${jointSpeeds[i]}°/s</span>`;
+    d.querySelector('input').oninput=e=>{
+      jointSpeeds[i]=+e.target.value;
+      d.querySelector('.val').textContent=jointSpeeds[i]+'°/s';
+      scheduleProjectWrite();
+    };
+    container.appendChild(d);
+  }
+}
+buildSpeedSliders();
+
+$('globalSpeed').oninput=e=>{
+  globalSpeed=+e.target.value;
+  $('globalSpeedVal').textContent=globalSpeed+'%';
+  scheduleProjectWrite();
+};
+$('resetSpeeds').onclick=()=>{
+  jointSpeeds=defaultJointSpeeds.slice();
+  globalSpeed=100;
+  $('globalSpeed').value=100;
+  $('globalSpeedVal').textContent='100%';
+  buildSpeedSliders();
+  scheduleProjectWrite();
+  $('status').innerHTML='<span class="good">Velocità ripristinate ai valori predefiniti.</span>';
+};
+
+/* === SOLVER IK CON POSTURA GRU === */
+function ikOne(t,seed,orient,posture){
+  let x=seed.slice(),best={score:Infinity,pos:Infinity,axis:1,x:x.slice()};
+  for(let it=0;it<450;it++){
+    let f=fk(x),p=sub(t,f.end),az=f.axis[2],score=norm(p)+(orient?Math.abs(az)*120:0);
+    if(score<best.score)best={score,pos:norm(p),axis:az,x:x.slice()};
+    if(norm(p)<1.2&&(!orient||Math.abs(az)<.02))return {ok:true,x,e:norm(p),axis:az};
+    let e=orient?[p[0],p[1],p[2],-az*120]:p,J=jac(x,orient),n=e.length,A=Array.from({length:n},()=>Array(n).fill(0));
+    for(let r=0;r<n;r++)for(let c=0;c<n;c++){
+      for(let k=0;k<6;k++)A[r][c]+=J[r][k]*J[c][k];
+      A[r][c]+=(r===c?3:0);
+    }
+    let y=solveLinear(A,e);
+    if(!y)break;
+    for(let k=0;k<6;k++){
+      let d=0;
+      for(let r=0;r<n;r++)d+=J[r][k]*y[r];
+      x[k]=clamp(x[k]+clamp(d,-5,5),limits[k][0],limits[k][1]);
+    }
+  }
+  return {ok:false,x:best.x,e:best.pos,axis:best.axis,score:best.score};
+}
+
+function poseCost(a,orient,posture='crane'){
+  let cost=0;
+  let w=smoothWeight/50.0;
+  for(let i=0;i<6;i++){
+    let pref=defaultRestPose[i];
+    let factor=(i===1)?0.06:(i===2||i===4)?0.02:0.002;
+    cost+=(a[i]-pref)*(a[i]-pref)*factor;
+  }
+  if(posture==='crane'){
+    if(a[1]>52) cost+=Math.pow(a[1]-52,2)*12.0;
+    if(a[1]<0) cost+=Math.pow(a[1],2)*18.0;
+    if(a[3]>-20) cost+=Math.pow(a[3]+20,2)*35.0+500.0;
+    cost+=Math.abs(a[3]-(-75.0))*2.0;
+    cost+=(Math.abs(a[2])+Math.abs(a[4]))*4.0;
+  }else if(posture==='scoop'){
+    if(a[3]<10) cost+=Math.pow(10-a[3],2)*20.0;
+  }
+  if(orient && w>0){
+    cost+=w*(Math.abs(a[1])*8.0+Math.abs(a[2])*10.0+Math.abs(a[4])*10.0);
+    if(Math.abs(a[1])>48) cost+=w*Math.pow(Math.abs(a[1])-48,2)*8.0;
+  }
+  return cost;
+}
+
+function ik(t,seed,orient){
+  let posture=$('postureMode')?.value || 'crane';
+  let yawTarget=Math.atan2(t[1], t[0])*R;
+  let starts=[
+    seed,
+    defaultRestPose,
+    [yawTarget, 38, 0, -75, 0, 37],
+    [yawTarget, 25, 0, -65, 0, 40],
+    [yawTarget, 48, 0, -90, 0, 42],
+    [yawTarget, 15, 0, -50, 0, 35],
+    [yawTarget, 52, 0, -105, 0, 53],
+    [yawTarget, 30, -10, -70, 10, 40],
+    [yawTarget, 40, 10, -80, -10, 40],
+    [0, 35, 0, -70, 0, 0]
+  ];
+  let out=starts.map(s=>ikOne(t,s,orient,posture)),good=out.filter(r=>r.ok);
+  if(good.length){
+    good.sort((a,b)=>(a.e-b.e)*100+0.003*(poseCost(a.x,orient,posture)-poseCost(b.x,orient,posture)));
+    return good[0];
+  }
+  out.sort((a,b)=>a.score-b.score+0.002*(poseCost(a.x,orient,posture)-poseCost(b.x,orient,posture)));
+  return out[0];
+}
+
+function calculateMoveDuration(fromPose, toPose){
+  let maxTimeMs=300, mult=globalSpeed/100.0;
+  for(let i=0;i<6;i++){
+    let delta=Math.abs(toPose[i]-fromPose[i]);
+    let effSpeed=Math.max(1, jointSpeeds[i]*mult);
+    let timeMs=(delta/effSpeed)*1000;
+    if(timeMs>maxTimeMs) maxTimeMs=timeMs;
+  }
+  return maxTimeMs;
+}
+
+function setPose(next){
+  let from=shownQ.slice();
+  let durationMs=calculateMoveDuration(from, next);
+  anim={from,to:next.slice(),at:performance.now(),duration:durationMs};
+  q=next.slice();
+  return durationMs;
+}
+
+/* === SCIA TRAIETTORIA 3D === */
+let trailPoints=[], trailMesh=null, isRecordingTrail=false;
+let trailSettings={enabled:true, thickness:3.0, opacity:0.85, color:'#00f0ff', autoClear:true};
+
+function clearTrail(){
+  trailPoints=[];
+  if(trailMesh){scene.remove(trailMesh);trailMesh.geometry.dispose();trailMesh.material.dispose();trailMesh=null;}
+  $('trailLengthStat').textContent='0.0';$('trailPointsStat').textContent='0';$('trailPointsCount').textContent='0';$('trailLenLive').textContent='0.0 mm';
+  $('trailActiveState').innerHTML='<span class="sub">In attesa movimento</span>';
+}
+function addTrailPoint(pt){
+  if(!trailSettings.enabled) return;
+  if(trailPoints.length>0 && trailPoints[trailPoints.length-1].distanceTo(pt)<1.2) return;
+  trailPoints.push(pt.clone());
+  updateTrailMesh();
+}
+function updateTrailMesh(){
+  if(trailPoints.length<2){if(trailMesh){scene.remove(trailMesh);trailMesh=null;}return;}
+  let curve=new THREE.CatmullRomCurve3(trailPoints);
+  let tubularSegments=Math.min(500, Math.max(12, trailPoints.length*4));
+  let radius=Math.max(0.2, trailSettings.thickness);
+  let newGeo=new THREE.TubeGeometry(curve, tubularSegments, radius, 8, false);
+  if(!trailMesh){
+    let mat=new THREE.MeshStandardMaterial({color:new THREE.Color(trailSettings.color),emissive:new THREE.Color(trailSettings.color),emissiveIntensity:0.65,roughness:0.2,metalness:0.3,transparent:true,opacity:trailSettings.opacity,depthWrite:false});
+    trailMesh=new THREE.Mesh(newGeo, mat);
+    scene.add(trailMesh);
+  }else{
+    trailMesh.geometry.dispose();trailMesh.geometry=newGeo;trailMesh.material.opacity=trailSettings.opacity;
+    trailMesh.material.color.set(trailSettings.color);trailMesh.material.emissive.set(trailSettings.color);
+  }
+  let totalLen=0;for(let i=0;i<trailPoints.length-1;i++) totalLen+=trailPoints[i].distanceTo(trailPoints[i+1]);
+  $('trailLengthStat').textContent=totalLen.toFixed(1);$('trailPointsStat').textContent=trailPoints.length;$('trailPointsCount').textContent=trailPoints.length;
+  $('trailLenLive').textContent=totalLen.toFixed(1)+' mm';$('trailActiveState').innerHTML='<span class="good">Tracciamento attivo ✓</span>';
+}
+
+$('enableTrail').onchange=e=>{trailSettings.enabled=e.target.checked;$('trailStateBadge').textContent=e.target.checked?'ATTIVA':'DISATTIVATA';if(!e.target.checked) clearTrail();};
+$('trailThickness').oninput=e=>{trailSettings.thickness=+e.target.value;$('trailThicknessVal').textContent=trailSettings.thickness.toFixed(1)+' mm';if(trailPoints.length>=2) updateTrailMesh();scheduleProjectWrite();};
+$('trailOpacity').oninput=e=>{trailSettings.opacity=(+e.target.value)/100.0;$('trailOpacityVal').textContent=e.target.value+'%';if(trailMesh) trailMesh.material.opacity=trailSettings.opacity;scheduleProjectWrite();};
+$('trailColor').onchange=e=>{trailSettings.color=e.target.value;if(trailMesh){trailMesh.material.color.set(trailSettings.color);trailMesh.material.emissive.set(trailSettings.color);}scheduleProjectWrite();};
+$('trailAutoClear').onchange=e=>{trailSettings.autoClear=e.target.checked;};
+$('clearTrailBtn').onclick=()=>{clearTrail();$('status').innerHTML='<span class="trail-txt">Scia traiettoria cancellata.</span>';};
+
+/* === SEQUENZA DI TARGET STANDALONE === */
+let sequenceTimer=null, isRunningSequence=false;
+function stopSequence(){if(sequenceTimer) clearTimeout(sequenceTimer);sequenceTimer=null;isRunningSequence=false;isRecordingTrail=false;}
+function executeTargetSequence(targetPose){
+  stopSequence();clearTrail();isRunningSequence=true;isRecordingTrail=true;
+  $('status').innerHTML='<span class="good">Passo 1/4: Raggiungimento posa Rest...</span>';
+  let dur1=setPose(defaultRestPose);
+  sequenceTimer=setTimeout(()=>{
+    $('status').innerHTML='<span class="good">Passo 2/4: Movimento verso Target (Postura Gru attiva)...</span>';
+    let dur2=setPose(targetPose);
+    sequenceTimer=setTimeout(()=>{
+      let count=3;
+      $('status').innerHTML=`<span class="good">Passo 3/4: Target raggiunto! Pausa di 3s (${count}s)...</span>`;
+      let holdInterval=setInterval(()=>{
+        count--;
+        if(count>0){
+          $('status').innerHTML=`<span class="good">Passo 3/4: Target raggiunto! Pausa di ${count}s...</span>`;
+        }else{
+          clearInterval(holdInterval);
+          $('status').innerHTML='<span class="good">Passo 4/4: Ritorno in posa Rest...</span>';
+          let dur3=setPose(defaultRestPose);
+          sequenceTimer=setTimeout(()=>{
+            isRunningSequence=false;isRecordingTrail=false;
+            if(trailSettings.autoClear && trailMesh){
+              $('status').innerHTML='<span class="good">Ciclo completato! Dissolvenza scia in corso...</span>';
+              let fadeStep=0, initialOpacity=trailMesh.material.opacity;
+              let fadeTimer=setInterval(()=>{
+                fadeStep++;
+                if(trailMesh&&trailMesh.material) trailMesh.material.opacity=Math.max(0, initialOpacity*(1-fadeStep/12));
+                if(fadeStep>=12){clearInterval(fadeTimer);clearTrail();$('status').innerHTML='<span class="good">Ciclo completato! Scia cancellata. Braccio pronto in posa Rest.</span>';}
+              }, 40);
+            }else{
+              $('status').innerHTML='<span class="good">Ciclo completato! Braccio fermo in posa Rest.</span>';
+            }
+          }, dur3+100);
+        }
+      },1000);
+    }, dur2+100);
+  }, dur1+100);
+}
+
+/* =========================================================================
+   === CREATOR & ENGINE GRUPPI DI ANIMAZIONE (SEQUENCER PROFESSIONALE) ===
+   ========================================================================= */
+let animationGroups={
+  "Ciclo_Demo_Lavoro": [
+    {id:"s1", name:"Posa Iniziale Home", q:defaultRestPose.slice(), waitType:"time", waitTime:2.0},
+    {id:"s2", name:"Punto Presa Target", q:[35, 20, -10, -50, 15, 30], waitType:"user_check", waitTime:0},
+    {id:"s3", name:"Ritorno a Riposo", q:defaultRestPose.slice(), waitType:"time", waitTime:1.5}
+  ]
+};
+
+let activeAnimGroupKey = "Ciclo_Demo_Lavoro";
+let isRunningAnimRoutine = false, currentStepIndex = -1, animRoutineTimer = null, userCheckResolver = null;
+
+function refreshAnimGroupSelector(){
+  let s = $('animGroupSelect');
+  s.innerHTML = '';
+  let keys = Object.keys(animationGroups);
+  if(keys.length === 0){
+    animationGroups["Gruppo_1"] = [];
+    keys = ["Gruppo_1"];
+  }
+  keys.forEach(k => {
+    let o = document.createElement('option');
+    o.value = k; o.textContent = k;
+    s.appendChild(o);
+  });
+  if(!animationGroups[activeAnimGroupKey]) activeAnimGroupKey = keys[0];
+  s.value = activeAnimGroupKey;
+  refreshStepListUI();
+}
+
+function refreshStepListUI(){
+  let list = $('animStepList');
+  list.innerHTML = '';
+  let steps = animationGroups[activeAnimGroupKey] || [];
+  
+  if(steps.length === 0){
+    list.innerHTML = '<div class="sub" style="padding:10px;text-align:center">Nessun passo in questo gruppo. Aggiungine uno qui sotto!</div>';
+    return;
+  }
+
+  steps.forEach((st, idx) => {
+    let card = document.createElement('div');
+    card.className = 'step-card' + (isRunningAnimRoutine && currentStepIndex === idx ? ' active' : '');
+    
+    let waitBadge = '';
+    if(st.waitType === 'time') waitBadge = `<span class="badge badge-blue">⏳ ${st.waitTime}s</span>`;
+    else if(st.waitType === 'user_check') waitBadge = `<span class="badge badge-gold">👤 Check Utente</span>`;
+    else waitBadge = `<span class="badge badge-green">⚡ Immediato</span>`;
+
+    card.innerHTML = `
+      <div class="step-info">
+        <div class="step-title">${idx+1}. ${st.name}</div>
+        <div class="step-meta">Azione: ${waitBadge}</div>
+      </div>
+      <div class="step-actions">
+        <button title="Sposta su" onclick="moveStepUp(${idx})">▲</button>
+        <button title="Sposta giù" onclick="moveStepDown(${idx})">▼</button>
+        <button title="Elimina passo" style="color:var(--bad)" onclick="removeStep(${idx})">✕</button>
+      </div>
+    `;
+    list.appendChild(card);
+  });
+}
+
+function refreshStepPoseDropdown(){
+  let s = $('newStepPoseSelect');
+  s.innerHTML = '<option value="__current__">📍 Posa attuale del braccio</option>';
+  Object.keys(savedPoses).sort().forEach(p => {
+    let o = document.createElement('option');
+    o.value = p; o.textContent = '📁 ' + p;
+    s.appendChild(o);
+  });
+}
+
+$('newStepWaitType').onchange = e => {
+  $('newStepTimeRow').style.display = (e.target.value === 'time') ? 'flex' : 'none';
+};
+
+$('animGroupSelect').onchange = e => {
+  activeAnimGroupKey = e.target.value;
+  refreshStepListUI();
+};
+
+$('btnNewAnimGroup').onclick = () => {
+  let name = prompt('Inserisci il nome del nuovo Gruppo di Animazione:', 'Ciclo_' + (Object.keys(animationGroups).length + 1));
+  if(name && name.trim()){
+    name = name.trim().replace(/\s+/g, '_');
+    if(!animationGroups[name]) animationGroups[name] = [];
+    activeAnimGroupKey = name;
+    refreshAnimGroupSelector();
+    scheduleProjectWrite();
+  }
+};
+
+$('btnDelAnimGroup').onclick = () => {
+  if(confirm(`Sei sicuro di voler eliminare il gruppo "${activeAnimGroupKey}"?`)){
+    delete animationGroups[activeAnimGroupKey];
+    activeAnimGroupKey = Object.keys(animationGroups)[0] || '';
+    refreshAnimGroupSelector();
+    scheduleProjectWrite();
+  }
+};
+
+$('btnAddStepToGroup').onclick = () => {
+  if(!animationGroups[activeAnimGroupKey]) animationGroups[activeAnimGroupKey] = [];
+  let poseChoice = $('newStepPoseSelect').value;
+  let targetQ = defaultRestPose.slice();
+  let stepName = 'Posa';
+
+  if(poseChoice === '__current__'){
+    targetQ = shownQ.slice();
+    stepName = 'Posa Giunti (' + targetQ.map(v=>Math.round(v)).join(',') + ')';
+  } else if(savedPoses[poseChoice]){
+    targetQ = savedPoses[poseChoice].slice();
+    stepName = poseChoice;
+  }
+
+  let waitType = $('newStepWaitType').value;
+  let waitTime = parseFloat($('newStepWaitTime').value) || 3.0;
+
+  animationGroups[activeAnimGroupKey].push({
+    id: 'st_' + Date.now(),
+    name: stepName,
+    q: targetQ,
+    waitType,
+    waitTime
+  });
+
+  refreshStepListUI();
+  scheduleProjectWrite();
+  $('status').innerHTML = `<span class="good">✓ Passo "${stepName}" aggiunto al gruppo "${activeAnimGroupKey}".</span>`;
+};
+
+window.moveStepUp = function(idx){
+  let steps = animationGroups[activeAnimGroupKey];
+  if(idx > 0 && steps){
+    let t = steps[idx]; steps[idx] = steps[idx-1]; steps[idx-1] = t;
+    refreshStepListUI();
+    scheduleProjectWrite();
+  }
+};
+window.moveStepDown = function(idx){
+  let steps = animationGroups[activeAnimGroupKey];
+  if(steps && idx < steps.length - 1){
+    let t = steps[idx]; steps[idx] = steps[idx+1]; steps[idx+1] = t;
+    refreshStepListUI();
+    scheduleProjectWrite();
+  }
+};
+window.removeStep = function(idx){
+  let steps = animationGroups[activeAnimGroupKey];
+  if(steps){
+    steps.splice(idx, 1);
+    refreshStepListUI();
+    scheduleProjectWrite();
+  }
+};
+
+/* === PLAYER ESECUZIONE ROUTINE ANIMAZIONI === */
+function stopAnimationRoutine(){
+  if(animRoutineTimer) clearTimeout(animRoutineTimer);
+  animRoutineTimer = null;
+  isRunningAnimRoutine = false;
+  currentStepIndex = -1;
+  userCheckResolver = null;
+  $('btnUserCheckContinue').style.display = 'none';
+  $('animCurrentGroupLbl').textContent = 'Fermo / Pronto';
+  $('animCurrentStepLbl').textContent = '--';
+  $('animCurrentActionLbl').textContent = 'Pronto';
+  refreshStepListUI();
+}
+
+async function playAnimationGroup(){
+  let steps = animationGroups[activeAnimGroupKey] || [];
+  if(steps.length === 0){
+    alert('Il gruppo selezionato non contiene passi da eseguire.');
+    return;
+  }
+  stopAnimationRoutine();
+  clearTrail();
+  isRunningAnimRoutine = true;
+  isRecordingTrail = true;
+  $('animCurrentGroupLbl').textContent = activeAnimGroupKey;
+
+  do {
+    for(let i = 0; i < steps.length; i++){
+      if(!isRunningAnimRoutine) return;
+      currentStepIndex = i;
+      let st = steps[i];
+      refreshStepListUI();
+
+      $('animCurrentStepLbl').textContent = `${i+1}/${steps.length}: ${st.name}`;
+      $('animCurrentActionLbl').innerHTML = '<span class="good">Movimento in corso verso il punto...</span>';
+      $('status').innerHTML = `<span class="good">Animazione: Passo ${i+1}/${steps.length} (${st.name})</span>`;
+
+      let duration = setPose(st.q);
+      await new Promise(r => { animRoutineTimer = setTimeout(r, duration + 80); });
+
+      if(!isRunningAnimRoutine) return;
+
+      // Azione di attesa
+      if(st.waitType === 'time'){
+        let remaining = st.waitTime;
+        while(remaining > 0 && isRunningAnimRoutine){
+          $('animCurrentActionLbl').innerHTML = `<span class="warn">⏳ Attesa: ${remaining.toFixed(1)}s...</span>`;
+          let stepDelay = Math.min(1.0, remaining);
+          await new Promise(r => { animRoutineTimer = setTimeout(r, stepDelay * 1000); });
+          remaining -= stepDelay;
+        }
+      } else if(st.waitType === 'user_check'){
+        $('animCurrentActionLbl').innerHTML = '<span class="warn">👤 In attesa conferma utente (Premi Continua)</span>';
+        $('btnUserCheckContinue').style.display = 'block';
+        $('btnUserCheckContinue').scrollIntoView({behavior:'smooth', block:'nearest'});
+        await new Promise(resolve => { userCheckResolver = resolve; });
+        $('btnUserCheckContinue').style.display = 'none';
+      }
+    }
+  } while($('animLoopCheck').checked && isRunningAnimRoutine);
+
+  $('animCurrentActionLbl').innerHTML = '<span class="good">✓ Routine completata con successo!</span>';
+  $('status').innerHTML = `<span class="good">✓ Gruppo di animazione "${activeAnimGroupKey}" completato.</span>`;
+  stopAnimationRoutine();
+}
+
+$('btnPlayAnimation').onclick = playAnimationGroup;
+$('btnStopAnimation').onclick = stopAnimationRoutine;
+$('btnUserCheckContinue').onclick = () => {
+  if(userCheckResolver){
+    let cb = userCheckResolver;
+    userCheckResolver = null;
+    cb();
+  }
+};
+
+/* === THREE.JS SCENE === */
+const view=$('view'),scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(45,1,1,6000),renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(devicePixelRatio);view.appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xffffff,0x17242a,1.2));
+let light=new THREE.DirectionalLight(0xffffff,.9);light.position.set(300,500,400);scene.add(light);
+scene.add(new THREE.GridHelper(1400,28,0x31505a,0x1a2c32));
+
+function V(p){return new THREE.Vector3(p[0],p[2],-p[1])}
+function jointQuaternion(M){
+  let ex=V([M[0][0],M[1][0],M[2][0]]),ey=V([M[0][1],M[1][1],M[2][1]]),ez=V([M[0][2],M[1][2],M[2][2]]);
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(ex,ey,ez));
+}
+function axis(c,to){let g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),V(to)]);scene.add(new THREE.Line(g,new THREE.LineBasicMaterial({color:c})))}
+axis(0xff5c5c,[180,0,0]);axis(0x5cff8a,[0,180,0]);axis(0x5c9dff,[0,0,180]);
+
+let arm=new THREE.Group();scene.add(arm);
+let links=[],joints=[],marker=new THREE.Mesh(new THREE.SphereGeometry(11,16,16),new THREE.MeshBasicMaterial({color:0x5c9dff,wireframe:true}));
+scene.add(marker);
+
+/* === GIZMO 3D INTERATTIVO (TRANSFORM CONTROLS) === */
+let transformControl = new THREE.TransformControls(camera, renderer.domElement);
+transformControl.size = 0.85;
+transformControl.attach(marker);
+scene.add(transformControl);
+
+transformControl.addEventListener('change', () => {
+  if(transformControl.dragging){
+    target[0] = marker.position.x;
+    target[1] = -marker.position.z;
+    target[2] = marker.position.y;
+    syncTarget();
+    updateTargetWorkspaceEvaluation();
+    scheduleProjectWrite();
+  }
+});
+
+let isDraggingGizmo = false;
+transformControl.addEventListener('dragging-changed', (e) => {
+  isDraggingGizmo = e.value;
+});
+
+const dummyRoot=new THREE.Group();scene.add(dummyRoot);
+const dummyMat=new THREE.MeshBasicMaterial({color:0xffbc5c,wireframe:true});
+let dummyJoints=Array.from({length:7},()=>[0,0,0]),endpointDummy=[0,0,0],dummyMeshes=[];
+for(let i=0;i<8;i++){let m=new THREE.Mesh(new THREE.SphereGeometry(8,12,12),dummyMat);dummyRoot.add(m);dummyMeshes.push(m)}
+const assets=[],assetRoot=new THREE.Group();scene.add(assetRoot);
+let selectedAssetIndex=-1,projectDir=null,projectTimer=null,isLocalServer=false;
+
+/* === REACHABILITY CLOUD === */
+let cloudMesh=null, cloudStatsData={rmax:0, rmin:Infinity, zmax:-Infinity, zmin:Infinity};
+let activeCloudMode='free';
+
+function generateReachabilityCloud(){
+  if(cloudMesh){scene.remove(cloudMesh);cloudMesh.geometry.dispose();cloudMesh.material.dispose();cloudMesh=null;}
+  let count=+ $('cloudDensity').value || 20000;
+  let sectionView=$('cloudSection').value;
+  let colMode=$('cloudColorMap').value;
+  let ptSize=+ $('cloudPointSize').value || 3.5;
+  let opacity=(+ $('cloudOpacity').value || 45)/100.0;
+  let isVisible=$('showCloud').checked;
+
+  let posArr=[], colArr=[];
+  let maxTheoreticalReach=geo.d12+geo.L1+geo.d34+geo.L2+geo.d56+geo.Lg;
+  let rmax=0, rmin=Infinity, zmax=-Infinity, zmin=Infinity;
+  let samplesCollected=0, maxAttempts=count*3, attempts=0;
+
+  while(samplesCollected<count && attempts<maxAttempts){
+    attempts++;
+    let testQ=limits.map(([min,max])=>min+Math.random()*(max-min));
+    if(sectionView==='slice') testQ[0]=(Math.random()-0.5)*3.5;
+
+    if(activeCloudMode==='horizontal'){
+      let levelPitch = -(testQ[1] + testQ[3]) + (Math.random()-0.5)*8.0;
+      testQ[5] = clamp(levelPitch, limits[5][0], limits[5][1]);
+    }
+
+    let f=fk(testQ), ep=f.end;
+    if(activeCloudMode==='horizontal' && Math.abs(f.axis[2])>0.088) continue;
+
+    let v3=V(ep);
+    posArr.push(v3.x,v3.y,v3.z);
+
+    let dist3D=Math.hypot(ep[0],ep[1],ep[2]);
+    if(dist3D>rmax) rmax=dist3D;
+    if(dist3D<rmin&&dist3D>10) rmin=dist3D;
+    if(ep[2]>zmax) zmax=ep[2];
+    if(ep[2]<zmin) zmin=ep[2];
+
+    let r=1,g=1,b=1;
+    if(colMode==='dist'){
+      let normR=clamp(dist3D/maxTheoreticalReach,0,1);
+      if(activeCloudMode==='horizontal'){
+        r=0.1+normR*0.9; g=0.9-normR*0.3; b=0.4+normR*0.6;
+      }else{
+        if(normR<0.4){r=0.2;g=0.9;b=1.0;}else if(normR<0.75){r=0.3+normR*0.7;g=0.95;b=0.4;}else{r=1.0;g=clamp((1-normR)*2,0,1);b=0.5+normR*0.5;}
+      }
+    }else if(colMode==='height'){
+      let normZ=clamp((ep[2]+100)/(maxTheoreticalReach+100),0,1);
+      r=0.2+0.8*normZ;g=0.5+0.5*(1-Math.abs(normZ-0.5)*2);b=1.0-0.7*normZ;
+    }else{
+      let t=Math.random();
+      if(activeCloudMode==='horizontal'){
+        if(t<0.7){r=0.38;g=0.90;b=0.78;}else{r=1.0;g=0.74;b=0.36;}
+      }else{
+        if(t<0.6){r=0.38;g=0.90;b=0.78;}else if(t<0.85){r=0.75;g=0.52;b=0.99;}else{r=0.36;g=0.62;b=1.00;}
+      }
+    }
+    colArr.push(r,g,b);
+    samplesCollected++;
+  }
+
+  cloudStatsData={rmax,rmin:(rmin===Infinity?0:rmin),zmax,zmin};
+  $('statRmax').textContent=rmax.toFixed(0);
+  $('statRmin').textContent=(rmin===Infinity?0:rmin).toFixed(0);
+  $('statZmax').textContent=zmax.toFixed(0);
+  $('statZmin').textContent=zmin.toFixed(0);
+
+  let geom=new THREE.BufferGeometry();
+  geom.setAttribute('position',new THREE.Float32BufferAttribute(posArr,3));
+  geom.setAttribute('color',new THREE.Float32BufferAttribute(colArr,3));
+  let mat=new THREE.PointsMaterial({size:ptSize,vertexColors:true,transparent:true,opacity:opacity,blending:THREE.AdditiveBlending,depthWrite:false});
+  
+  cloudMesh=new THREE.Points(geom,mat);
+  cloudMesh.visible=isVisible;
+  scene.add(cloudMesh);
+
+  $('cloudActiveModeLbl').textContent=activeCloudMode==='horizontal'?'Con Pinza Orizzontale (±5°)':'Senza Vincolo (6 DOF Libero)';
+  $('cloudActiveModeLbl').className=activeCloudMode==='horizontal'?'good':'purple-txt';
+
+  updateTargetWorkspaceEvaluation();
+}
+
+function updateTargetWorkspaceEvaluation(){
+  let tx=target[0], ty=target[1], tz=target[2], dist3D=Math.hypot(tx,ty,tz);
+  $('targetRadius').textContent=`${dist3D.toFixed(0)} mm`;
+  let maxR=cloudStatsData.rmax || (geo.d12+geo.L1+geo.d34+geo.L2+geo.d56+geo.Lg), minR=cloudStatsData.rmin || 30;
+  if(dist3D>maxR){$('targetInsideVol').innerHTML='<span class="bad">FUORI INVILUPPO (Troppo lontano)</span>';}
+  else if(dist3D<minR && minR>0){$('targetInsideVol').innerHTML='<span class="warn">ZONA MORTA CENTRALE (Troppo vicino)</span>';}
+  else if(tz<(cloudStatsData.zmin-20) || tz>(cloudStatsData.zmax+20)){$('targetInsideVol').innerHTML='<span class="bad">FUORI LIMITI QUOTA Z</span>';}
+  else{$('targetInsideVol').innerHTML='<span class="good">NEL VOLUME RAGGIUNGIBILE ✓</span>';}
+}
+
+$('btnCloudFree').onclick=()=>{activeCloudMode='free';$('btnCloudFree').classList.add('active');$('btnCloudHori').classList.remove('active');$('showCloud').checked=true;$('cloudStateBadge').textContent='ON';generateReachabilityCloud();$('status').innerHTML='<span class="purple-txt">Calcolata Nuvola 3D: Braccio Libero (Senza Vincolo Pinza).</span>';};
+$('btnCloudHori').onclick=()=>{activeCloudMode='horizontal';$('btnCloudHori').classList.add('active');$('btnCloudFree').classList.remove('active');$('showCloud').checked=true;$('cloudStateBadge').textContent='ON';generateReachabilityCloud();$('status').innerHTML='<span class="good">Calcolata Nuvola 3D: Con Pinza Orizzontale (Assetto Livellato).</span>';};
+$('showCloud').onchange=e=>{if(!cloudMesh) generateReachabilityCloud();if(cloudMesh) cloudMesh.visible=e.target.checked;$('cloudStateBadge').textContent=e.target.checked?'ON':'OFF';};
+$('cloudDensity').oninput=e=>{$('cloudDensityVal').textContent=(+e.target.value/1000)+'k';};
+$('cloudPointSize').oninput=e=>{$('cloudPointSizeVal').textContent=e.target.value+'px';if(cloudMesh) cloudMesh.material.size=+e.target.value;};
+$('cloudOpacity').oninput=e=>{$('cloudOpacityVal').textContent=e.target.value+'%';if(cloudMesh) cloudMesh.material.opacity=+e.target.value/100.0;};
+$('cloudSection').onchange=()=>generateReachabilityCloud();
+$('cloudColorMap').onchange=()=>generateReachabilityCloud();
+$('recalcCloud').onclick=()=>{$('showCloud').checked=true;$('cloudStateBadge').textContent='ON';generateReachabilityCloud();$('status').innerHTML='<span class="purple-txt">Nuvola Workspace 3D rigenerata!</span>';};
+
+/* =========================================================================
+   === DUAL JSON ENGINE & AUTO-CARICAMENTO DIRETTO (MARCO CODICI 6 DOF) ===
+   ========================================================================= */
+
+function stlConfigSnapshot(){
+  return {
+    version: 22,
+    type: "stl_configuration",
+    timestamp: new Date().toISOString(),
+    geo,
+    dummyJoints,
+    endpointDummy,
+    assets: assets.map(a=>({
+      id: a.id,
+      name: a.name,
+      attach: a.attach,
+      scale: a.mesh.scale.x,
+      x: a.mesh.position.x,
+      y: -a.mesh.position.z,
+      z: a.mesh.position.y,
+      rx: a.mesh.rotation.x * R,
+      ry: a.mesh.rotation.z * R,
+      rz: a.mesh.rotation.y * R
+    }))
+  };
+}
+
+function posesConfigSnapshot(){
+  return {
+    version: 22,
+    type: "saved_poses_and_motion",
+    timestamp: new Date().toISOString(),
+    target,
+    smoothWeight,
+    postureMode: $('postureMode')?.value || 'crane',
+    jointSpeeds,
+    globalSpeed,
+    trailSettings,
+    poses: savedPoses,
+    animationGroups: animationGroups
+  };
+}
+
+function applyStlConfig(c){
+  if(!c) return;
+  geo=Object.assign(geo, c.geo||{});
+  Object.keys(geo).forEach(k=>{if($(k))$(k).value=geo[k]});
+  dummyJoints=(c.dummyJoints||dummyJoints).map(x=>x.slice());
+  endpointDummy=(c.endpointDummy||endpointDummy).slice();
+  rebuild();syncDummy();
+}
+
+function applyPosesConfig(p){
+  if(!p) return;
+  target=(p.target||target).slice();
+  if(p.smoothWeight!==undefined){smoothWeight=p.smoothWeight;if($('smoothWeight'))$('smoothWeight').value=smoothWeight;if($('smoothWeightVal'))$('smoothWeightVal').textContent=smoothWeight+'%';}
+  if(p.globalSpeed!==undefined){globalSpeed=p.globalSpeed;if($('globalSpeed'))$('globalSpeed').value=globalSpeed;if($('globalSpeedVal'))$('globalSpeedVal').textContent=globalSpeed+'%';}
+  if(p.postureMode && $('postureMode')) $('postureMode').value=p.postureMode;
+  if(p.jointSpeeds){jointSpeeds=p.jointSpeeds.slice();buildSpeedSliders();}
+  if(p.trailSettings){
+    trailSettings=Object.assign(trailSettings,p.trailSettings);
+    if($('enableTrail')) $('enableTrail').checked=trailSettings.enabled;
+    if($('trailThickness')) $('trailThickness').value=trailSettings.thickness;
+    if($('trailThicknessVal')) $('trailThicknessVal').textContent=trailSettings.thickness.toFixed(1)+' mm';
+    if($('trailOpacity')) $('trailOpacity').value=trailSettings.opacity*100;
+    if($('trailOpacityVal')) $('trailOpacityVal').textContent=(trailSettings.opacity*100)+'%';
+    if($('trailColor')) $('trailColor').value=trailSettings.color;
+  }
+  savedPoses=p.poses||{};
+  if(p.animationGroups && Object.keys(p.animationGroups).length>0){
+    animationGroups=p.animationGroups;
+  }
+  syncTarget();refreshPoses();refreshAnimGroupSelector();refreshStepPoseDropdown();updateTargetWorkspaceEvaluation();
+}
+
+async function writeDualJsonFiles(){
+  if(isLocalServer || location.protocol.startsWith('http')){
+    try{
+      await fetch('/api/save_stl_config', {method:'POST', body:JSON.stringify(stlConfigSnapshot(),null,2)});
+      await fetch('/api/save_poses_config', {method:'POST', body:JSON.stringify(posesConfigSnapshot(),null,2)});
+      return true;
+    }catch(e){}
+  }
+  if(projectDir){
+    try{
+      let fh1=await projectDir.getFileHandle('robot6dof_stl_config.json',{create:true});
+      let w1=await fh1.createWritable();await w1.write(JSON.stringify(stlConfigSnapshot(),null,2));await w1.close();
+      let fh2=await projectDir.getFileHandle('robot6dof_saved_poses.json',{create:true});
+      let w2=await fh2.createWritable();await w2.write(JSON.stringify(posesConfigSnapshot(),null,2));await w2.close();
+      return true;
+    }catch(e){console.warn(e);}
+  }
+  return false;
+}
+
+function scheduleProjectWrite(){
+  clearTimeout(projectTimer);
+  projectTimer=setTimeout(()=>{
+    writeDualJsonFiles();
+    saveToIndexedDB();
+  }, 350);
+}
+
+/* === CARICAMENTO AUTOMATICO NATIVO ALL'AVVIO === */
+async function autoInitOnStartup(){
+  if(location.protocol.startsWith('http')){
+    try{
+      let testResp=await fetch('/api/list_stls');
+      if(testResp.ok){
+        isLocalServer=true;
+        $('modeBadge').innerHTML='<span class="good">DigitalTwin6DOF.exe (Nativo)</span>';
+        
+        try{
+          let stlConfResp=await fetch('/robot6dof_stl_config.json');
+          if(stlConfResp.ok) applyStlConfig(await stlConfResp.json());
+        }catch(_){}
+
+        try{
+          let posesConfResp=await fetch('/robot6dof_saved_poses.json');
+          if(posesConfResp.ok) applyPosesConfig(await posesConfResp.json());
+        }catch(_){}
+
+        let stlList=await testResp.json();
+        if(stlList && stlList.length>0){
+          clearAssets();
+          let stlConfResp=await fetch('/robot6dof_stl_config.json');
+          let stlConf=stlConfResp.ok?await stlConfResp.json():null;
+          let configMap=new Map();
+          if(stlConf && stlConf.assets) stlConf.assets.forEach(c=>configMap.set(c.name, c));
+
+          for(let stlName of stlList){
+            try{
+              let fileResp=await fetch('/'+stlName);
+              let blob=await fileResp.blob();
+              let file=new File([blob], stlName);
+              let cfg=configMap.get(stlName)||null;
+              await addStlFile(file, cfg);
+            }catch(err){console.warn('Errore STL:', stlName, err);}
+          }
+          refreshAssets();
+          if(assets.length) highlightAsset(0);
+          $('stlCountBadge').textContent=`${assets.length} STL caricati ✓`;
+          $('status').innerHTML=`<span class="good">✓ Caricamento automatico completato da Marco Codici 6 DOF (${assets.length} STL).</span>`;
+          saveToIndexedDB();
+          return;
+        }
+      }
+    }catch(e){console.log('Server locale non rilevato, fallback IndexedDB:',e);}
+  }
+
+  $('modeBadge').innerHTML='<span class="warn">Browser Sandbox (IndexedDB)</span>';
+  await loadFromIndexedDB();
+}
+
+/* === PERSISTENZA INDEXED DB === */
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    let req=indexedDB.open('DigitalTwin6DOF_v22', 1);
+    req.onupgradeneeded=e=>{
+      let db=e.target.result;
+      if(!db.objectStoreNames.contains('assets')) db.createObjectStore('assets',{keyPath:'name'});
+      if(!db.objectStoreNames.contains('stl_config')) db.createObjectStore('stl_config',{keyPath:'id'});
+      if(!db.objectStoreNames.contains('poses_config')) db.createObjectStore('poses_config',{keyPath:'id'});
+    };
+    req.onsuccess=e=>resolve(e.target.result);
+    req.onerror=e=>reject(e);
+  });
+}
+
+async function saveToIndexedDB(){
+  try{
+    let db=await openDB();
+    let tx=db.transaction(['assets','stl_config','poses_config'],'readwrite');
+    let assetStore=tx.objectStore('assets');
+    assetStore.clear();
+    for(let a of assets){
+      if(a.buffer){
+        assetStore.put({
+          name: a.name, buffer: a.buffer,
+          config: {
+            id: a.id, name: a.name, attach: a.attach,
+            scale: a.mesh.scale.x,
+            x: a.mesh.position.x, y: -a.mesh.position.z, z: a.mesh.position.y,
+            rx: a.mesh.rotation.x*R, ry: a.mesh.rotation.z*R, rz: a.mesh.rotation.y*R
+          }
+        });
+      }
+    }
+    tx.objectStore('stl_config').put({id:'current', data: stlConfigSnapshot()});
+    tx.objectStore('poses_config').put({id:'current', data: posesConfigSnapshot()});
+  }catch(e){}
+}
+
+async function loadFromIndexedDB(){
+  try{
+    let db=await openDB();
+    let tx=db.transaction(['assets','stl_config','poses_config'],'readonly');
+    let stlConfReq=tx.objectStore('stl_config').get('current');
+    stlConfReq.onsuccess=()=>{let c=stlConfReq.result?.data;if(c) applyStlConfig(c);};
+
+    let posesConfReq=tx.objectStore('poses_config').get('current');
+    posesConfReq.onsuccess=()=>{let p=posesConfReq.result?.data;if(p) applyPosesConfig(p);};
+
+    let stlReq=tx.objectStore('assets').getAll();
+    stlReq.onsuccess=async()=>{
+      let savedAssets=stlReq.result||[];
+      if(savedAssets.length>0 && assets.length===0){
+        clearAssets();
+        for(let sa of savedAssets){
+          let blob=new Blob([sa.buffer]);
+          let file=new File([blob],sa.name);
+          await addStlFile(file, sa.config);
+        }
+        refreshAssets();
+        if(assets.length) highlightAsset(0);
+        $('stlCountBadge').textContent=`${savedAssets.length} STL ripristinati ✓`;
+        $('status').innerHTML=`<span class="good">✓ Ripristinati ${savedAssets.length} STL dalla memoria locale.</span>`;
+      }
+    };
+  }catch(e){}
+}
+
+async function scanProjectFolder(){
+  if(!window.showDirectoryPicker){$('status').innerHTML='<span class="bad">Browser non supportato per scansione cartella.</span>';return;}
+  try{
+    projectDir=await window.showDirectoryPicker({mode:'readwrite'});
+    let stlConfig=null, posesConfig=null;
+    try{stlConfig=JSON.parse(await (await (await projectDir.getFileHandle('robot6dof_stl_config.json')).getFile()).text());applyStlConfig(stlConfig);}catch(_){}
+    try{posesConfig=JSON.parse(await (await (await projectDir.getFileHandle('robot6dof_saved_poses.json')).getFile()).text());applyPosesConfig(posesConfig);}catch(_){}
+
+    let stlFilesFound=[];
+    for await (const entry of projectDir.values()){
+      if(entry.kind==='file' && entry.name.toLowerCase().endsWith('.stl')){
+        stlFilesFound.push(await entry.getFile());
+      }
+    }
+    if(stlFilesFound.length>0){
+      clearAssets();
+      let configMap=new Map();
+      if(stlConfig && stlConfig.assets) stlConfig.assets.forEach(cfg=>configMap.set(cfg.name,cfg));
+      for(let file of stlFilesFound){
+        await addStlFile(file, configMap.get(file.name)||null);
+      }
+      refreshAssets();
+      if(assets.length) highlightAsset(0);
+    }
+    await writeDualJsonFiles();
+    await saveToIndexedDB();
+    $('stlCountBadge').textContent=`${stlFilesFound.length} STL collegati ✓`;
+    $('status').innerHTML=`<span class="good">Cartella collegata! ${stlFilesFound.length} STL sincronizzati.</span>`;
+  }catch(e){if(e.name!=='AbortError') console.error(e);}
+}
+
+$('scanFolder').onclick=scanProjectFolder;
+$('writeProject').onclick=async()=>{
+  let ok=await writeDualJsonFiles();
+  await saveToIndexedDB();
+  $('status').innerHTML=ok?'<span class="good">✓ File JSON aggiornati su disco in Marco Codici 6 DOF!</span>':'<span class="good">✓ Configurazione salvata nella memoria locale!</span>';
+};
+
+/* === THREE.JS MESH REBUILD & RENDERING === */
+function newAssetId(fileName){let stem=fileName.replace(/\.stl$/i,'').trim()||'pezzo',n=1,id=stem+'_'+n;while(assets.some(a=>a.id===id))id=stem+'_'+(++n);return id}
+function highlightAsset(index){selectedAssetIndex=index;assets.forEach((a,i)=>{a.mesh.material.color.set(i===index?0xffbc5c:0xa9c5c9);a.mesh.material.emissive&&a.mesh.material.emissive.set(i===index?0x5a3100:0x000000)});document.querySelectorAll('.treeItem').forEach((el,i)=>el.classList.toggle('selected',i===index));if(index>=0){$('assetSelect').value=index;readAsset(assets[index])}}
+function refreshHierarchy(){let h=$('hierarchy');h.innerHTML='<div class="sub">└─ Robot 6 DOF</div>';assets.forEach((a,i)=>{let e=document.createElement('div');e.className='treeItem'+(i===selectedAssetIndex?' selected':'');e.textContent='   '+a.id+'  →  '+(a.attach<0?'Mondo':a.attach===6?'Pinza':'Braccio '+(a.attach+1));e.onclick=()=>highlightAsset(i);h.appendChild(e)})}
+function rebuild(){arm.clear();links=[];joints=[];let lm=new THREE.MeshStandardMaterial({color:0x29484d,metalness:.35,roughness:.45}),jm=new THREE.MeshStandardMaterial({color:0x61e6c7,emissive:0x093f36});for(let i=0;i<6;i++){let m=new THREE.Mesh(new THREE.CylinderGeometry(geo.diameter/2,geo.diameter/2,1,18),lm);arm.add(m);links.push(m)}for(let i=0;i<7;i++){let m=new THREE.Mesh(new THREE.SphereGeometry(geo.diameter*.62,16,16),jm);arm.add(m);joints.push(m)}}rebuild();
+
+function draw(){
+  let f=fk(shownQ);
+  for(let i=0;i<6;i++){
+    let a=V(f.pts[i]),b=V(f.pts[i+1]),d=b.clone().sub(a),m=links[i];
+    m.position.copy(a).add(b).multiplyScalar(.5);
+    m.scale.set(1,d.length(),1);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize());
+  }
+  f.pts.forEach((p,i)=>joints[i].position.copy(V(p)));
+  marker.position.copy(V(target));
+  dummyJoints.forEach((p,i)=>dummyMeshes[i].position.copy(V(p)));
+  dummyMeshes[7].position.copy(V(endpointDummy));
+  assets.forEach(a=>{
+    let at=a.attach;
+    if(at<0){
+      a.root.position.set(0,0,0);a.root.quaternion.identity();
+    }else{
+      let ji=at===6?5:at,point=at===6?f.end:f.pts[at];
+      a.root.position.copy(V(point));
+      a.root.quaternion.copy(jointQuaternion(f.frames[ji]));
+    }
+  });
+
+  if(isRecordingTrail || anim){
+    addTrailPoint(V(f.end));
+  }
+
+  $('angles').innerHTML=shownQ.map((v,i)=>`J${i+1}: ${v.toFixed(1)}°`).join('<br>');
+  $('position').innerHTML=`X: ${f.end[0].toFixed(1)}<br>Y: ${f.end[1].toFixed(1)}<br>Z: ${f.end[2].toFixed(1)}`;
+}
+
+let az=.8,el=.45,dist=950,drag=false,last;
+function cam(){camera.position.set(dist*Math.cos(el)*Math.sin(az),250+dist*Math.sin(el),dist*Math.cos(el)*Math.cos(az));camera.lookAt(0,200,0)}
+
+renderer.domElement.addEventListener('pointerdown',e=>{
+  if(isDraggingGizmo) return;
+  drag=true;last={x:e.clientX,y:e.clientY};
+});
+renderer.domElement.addEventListener('pointerup',e=>{drag=false;});
+renderer.domElement.addEventListener('pointermove',e=>{
+  if(!drag || isDraggingGizmo) return;
+  az-=(e.clientX-last.x)*.006;
+  el=clamp(el+(e.clientY-last.y)*.006,-1.2,1.3);
+  last={x:e.clientX,y:e.clientY};
+});
+renderer.domElement.addEventListener('wheel',e=>{
+  dist=clamp(dist+e.deltaY*.55,250,3500);
+  e.preventDefault();
+},{passive:false});
+
+function syncTarget(){
+  ['tx','ty','tz'].forEach((id,i)=>$(id).value=target[i].toFixed(1));
+  marker.position.copy(V(target));
+}
+
+/* === VISTE CAD RAPIDE (CAMERA PRESETS) === */
+function setCameraView(newAz, newEl, newDist=950){
+  az = newAz; el = newEl; dist = newDist;
+  document.querySelectorAll('.cad-btn').forEach(b=>b.classList.remove('active'));
+}
+
+$('viewIso').onclick=e=>{setCameraView(0.8, 0.45, 950);e.target.classList.add('active');};
+$('viewTop').onclick=e=>{setCameraView(0, 1.45, 1100);e.target.classList.add('active');};
+$('viewFront').onclick=e=>{setCameraView(0, 0.05, 1050);e.target.classList.add('active');};
+$('viewSide').onclick=e=>{setCameraView(Math.PI/2, 0.05, 1050);e.target.classList.add('active');};
+$('viewReset').onclick=()=>{setCameraView(0.8, 0.45, 950);$('viewIso').classList.add('active');};
+$('viewFull').onclick=()=>{
+  if(!document.fullscreenElement){
+    document.documentElement.requestFullscreen().catch(()=>{});
+  }else{
+    document.exitFullscreen().catch(()=>{});
+  }
+};
+
+/* === GESTIONE RESIZING PANNELLI TRASCINABILI === */
+let isResizingLeft = false, isResizingRight = false;
+const resizerLeft = $('resizerLeft'), resizerRight = $('resizerRight');
+
+resizerLeft.addEventListener('mousedown', e => {
+  isResizingLeft = true;
+  resizerLeft.classList.add('dragging');
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+});
+
+resizerRight.addEventListener('mousedown', e => {
+  isResizingRight = true;
+  resizerRight.classList.add('dragging');
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+});
+
+window.addEventListener('mousemove', e => {
+  if (isResizingLeft) {
+    let w = Math.max(320, Math.min(750, e.clientX));
+    document.documentElement.style.setProperty('--left-w', w + 'px');
+    resize();
+  }
+  if (isResizingRight) {
+    let w = Math.max(260, Math.min(650, window.innerWidth - e.clientX));
+    document.documentElement.style.setProperty('--right-w', w + 'px');
+    resize();
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  if (isResizingLeft || isResizingRight) {
+    isResizingLeft = false;
+    isResizingRight = false;
+    resizerLeft.classList.remove('dragging');
+    resizerRight.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    resize();
+  }
+});
+
+/* === PULSANTI TOGGLE PANNELLI LATERALI === */
+$('toggleLeftBtn').onclick=()=>{
+  let app=$('app');
+  if(app.classList.contains('hide-left')){
+    app.classList.remove('hide-left');
+    $('toggleLeftBtn').textContent='◀';
+  }else{
+    app.classList.add('hide-left');
+    $('toggleLeftBtn').textContent='▶';
+  }
+  setTimeout(resize, 260);
+};
+
+$('toggleRightBtn').onclick=()=>{
+  let app=$('app');
+  if(app.classList.contains('hide-right')){
+    app.classList.remove('hide-right');
+    $('toggleRightBtn').textContent='▶';
+  }else{
+    app.classList.add('hide-right');
+    $('toggleRightBtn').textContent='◀';
+  }
+  setTimeout(resize, 260);
+};
+
+function tick(){
+  if(anim){
+    let dur=anim.duration||850;
+    let t=clamp((performance.now()-anim.at)/dur,0,1),s=t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+    shownQ=anim.from.map((v,i)=>v+(anim.to[i]-v)*s);
+    if(t===1)anim=null;
+  }
+  draw();cam();renderer.render(scene,camera);requestAnimationFrame(tick);
+}
+function resize(){renderer.setSize(view.clientWidth,view.clientHeight);camera.aspect=view.clientWidth/view.clientHeight;camera.updateProjectionMatrix()}
+addEventListener('resize',resize);resize();
+
+['J1 yaw','J2 pitch','J3 yaw','J4 pitch','J5 yaw','J6 pitch'].forEach((name,i)=>{
+  let d=document.createElement('div');d.className='row';
+  d.innerHTML=`<label>${name}</label><input type="range" min="${limits[i][0]}" max="${limits[i][1]}" value="${defaultRestPose[i]}"><span class="val">${defaultRestPose[i]}°</span>`;
+  d.querySelector('input').oninput=e=>{
+    q[i]=shownQ[i]=+e.target.value;
+    d.querySelector('.val').textContent=q[i]+'°';
+    if(trailSettings.enabled && !isRunningSequence && !isRunningAnimRoutine) addTrailPoint(V(fk(shownQ).end));
+  };
+  $('sliders').appendChild(d);
+});
+
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===b));
+  let isFK = b.dataset.tab==='fk';
+  $('fk').hidden=!isFK;
+  $('ik').hidden=isFK;
+  transformControl.visible = !isFK;
+  transformControl.enabled = !isFK;
+  marker.visible = !isFK;
+});
+['tx','ty','tz'].forEach((id,i)=>$(id).oninput=()=>{target[i]=+$(id).value||0;marker.position.copy(V(target));updateTargetWorkspaceEvaluation();scheduleProjectWrite();});
+$('smoothWeight').oninput=e=>{smoothWeight=+e.target.value;$('smoothWeightVal').textContent=smoothWeight+'%';scheduleProjectWrite();};
+$('postureMode').onchange=()=>scheduleProjectWrite();
+
+$('applyGeo').onclick=()=>{
+  Object.keys(geo).forEach(k=>geo[k]=+$(k).value||0);
+  rebuild();
+  if($('showCloud').checked) generateReachabilityCloud();
+  updateTargetWorkspaceEvaluation();
+  scheduleProjectWrite();
+};
+$('vertical').onclick=()=>setPose([0,0,0,0,0,0]);
+$('rest').onclick=()=>setPose(defaultRestPose);
+$('showTarget').onclick=()=>{
+  let v = !transformControl.visible;
+  transformControl.visible = v;
+  transformControl.enabled = v;
+  marker.visible = v;
+};
+
+function runIKCalculation(useCycle=true){
+  Object.keys(geo).forEach(k=>geo[k]=+$(k).value||0);
+  let res=ik(target,q,$('horizontal').checked);
+  if(res.ok){
+    if(useCycle && $('useCycle').checked){
+      executeTargetSequence(res.x);
+    }else{
+      stopSequence();clearTrail();isRecordingTrail=true;setPose(res.x);
+      $('status').innerHTML=`<span class="good">TARGET RAGGIUNGIBILE (Postura Gru)</span><br>J2: ${res.x[1].toFixed(1)}° | J4: ${res.x[3].toFixed(1)}° | J6: ${res.x[5].toFixed(1)}°<br>Errore: ${res.e.toFixed(2)} mm`;
+    }
+  }else{
+    $('status').innerHTML=`<span class="bad">TARGET NON RAGGIUNGIBILE</span><br>Errore minimo: ${res.e.toFixed(1)} mm. Prova un punto più vicino o disattiva “Pinza orizz.”`;
+  }
+}
+$('solve').onclick=()=>runIKCalculation(true);
+$('solveDirect').onclick=()=>runIKCalculation(false);
+
+function selectedAsset(){return assets[+$('assetSelect').value]||null}
+function readAsset(a){
+  if(!a)return;let m=a.mesh;
+  $('assetScale').value=m.scale.x;$('assetX').value=m.position.x;$('assetY').value=(-m.position.z).toFixed(3);$('assetZ').value=m.position.y;
+  $('assetRX').value=(m.rotation.x*R).toFixed(1);$('assetRY').value=(m.rotation.z*R).toFixed(1);$('assetRZ').value=(m.rotation.y*R).toFixed(1);
+  $('assetAttach').value=a.attach;
+}
+function refreshAssets(){
+  let s=$('assetSelect'),old=s.value;s.innerHTML=assets.length?'':'<option>Nessun STL</option>';
+  assets.forEach((a,i)=>{let o=document.createElement('option');o.value=i;o.textContent=a.id;s.appendChild(o)});
+  s.value=assets.length?Math.min(+old||0,assets.length-1):'';readAsset(selectedAsset());refreshHierarchy();
+}
+function clearAssets(){while(assets.length){let a=assets.pop();assetRoot.remove(a.root);a.mesh.geometry.dispose();a.mesh.material.dispose()}selectedAssetIndex=-1}
+
+async function addStlFile(file,config=null){
+  let loader=new THREE.STLLoader(),buffer=await file.arrayBuffer(),g=loader.parse(buffer);
+  g.computeVertexNormals();g.center();
+  let mesh=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:0xa9c5c9,metalness:.25,roughness:.55})),root=new THREE.Group();
+  root.add(mesh);assetRoot.add(root);
+  let a={id:config?.id||newAssetId(file.name),name:file.name,root,mesh,attach:config?.attach??-1,buffer:buffer};
+  if(config){mesh.scale.setScalar(config.scale);mesh.position.set(config.x,config.z,-config.y);mesh.rotation.set(config.rx*D,config.rz*D,config.ry*D)}
+  assets.push(a);
+}
+
+$('assetSelect').onchange=()=>highlightAsset(+$('assetSelect').value);
+$('applyAsset').onclick=()=>{
+  let a=selectedAsset();if(!a)return;let m=a.mesh,sc=Math.max(.0001,+$('assetScale').value||1);
+  m.scale.setScalar(sc);m.position.set(+$('assetX').value||0,+$('assetZ').value||0,-(+$('assetY').value||0));
+  m.rotation.set((+$('assetRX').value||0)*D,(+$('assetRZ').value||0)*D,(+$('assetRY').value||0)*D);
+  a.attach=+$('assetAttach').value;
+  refreshHierarchy();scheduleProjectWrite();$('status').innerHTML='<span class="good">STL aggiornato e configurazione salvata.</span>';
+};
+$('deleteAsset').onclick=()=>{
+  let i=+$('assetSelect').value,a=assets[i];if(!a)return;
+  assetRoot.remove(a.root);a.mesh.geometry.dispose();a.mesh.material.dispose();
+  assets.splice(i,1);selectedAssetIndex=-1;refreshAssets();scheduleProjectWrite();
+  $('status').innerHTML='<span class="good">STL eliminato.</span>';
+};
+
+$('stlFiles').onchange=async e=>{
+  for(let file of e.target.files){
+    try{
+      await addStlFile(file);
+    }catch(_){$('status').innerHTML='<span class="bad">Impossibile leggere '+file.name+'</span>'}
+  }
+  refreshAssets();
+  if(assets.length){highlightAsset(assets.length-1);scheduleProjectWrite();$('status').innerHTML=`<span class="good">${assets.length} STL caricati e memorizzati.</span>`}
+};
+
+/* === DUMMY & PROGETTO === */
+function dummyValue(){let v=$('dummySelect').value;if(v==='target')return target;if(v==='endpoint')return endpointDummy;return dummyJoints[+v]}
+function syncDummy(){let p=dummyValue();$('dummyX').value=p[0].toFixed(1);$('dummyY').value=p[1].toFixed(1);$('dummyZ').value=p[2].toFixed(1)}
+$('dummySelect').onchange=syncDummy;
+$('applyDummy').onclick=()=>{
+  let p=dummyValue();p[0]=+$('dummyX').value||0;p[1]=+$('dummyY').value||0;p[2]=+$('dummyZ').value||0;
+  if($('dummySelect').value==='target')syncTarget();
+  scheduleProjectWrite();$('status').innerHTML='<span class="good">Dummy aggiornato.</span>';
+};
+$('captureJoints').onclick=()=>{
+  let f=fk(shownQ);dummyJoints=f.pts.map(p=>p.slice());endpointDummy=f.end.slice();syncDummy();scheduleProjectWrite();
+  $('status').innerHTML='<span class="good">Giunti catturati dalla posa attuale.</span>';
+};
+$('useDummyGeometry').onclick=()=>{
+  let ds=[];for(let i=0;i<6;i++)ds.push(norm(sub(dummyJoints[i+1],dummyJoints[i])));
+  if(ds.some(x=>x<.1)){$('status').innerHTML='<span class="bad">Dummy non validi. Cattura i giunti o posizionali correttamente.</span>';return}
+  ['d12','L1','d34','L2','d56','Lg'].forEach((id,i)=>{$(id).value=ds[i].toFixed(1)});
+  Object.keys(geo).forEach(k=>geo[k]=+$(k).value||0);
+  rebuild();
+  if($('showCloud').checked) generateReachabilityCloud();
+  scheduleProjectWrite();$('status').innerHTML='<span class="good">Geometria IK aggiornata dai dummy.</span>';
+};
+
+let savedPoses={};
+function refreshPoses(){
+  let s=$('poseList');s.innerHTML='';
+  Object.keys(savedPoses).sort().forEach(n=>{
+    let o=document.createElement('option');o.value=n;o.textContent=n;s.appendChild(o);
+  });
+  refreshStepPoseDropdown();
+}
+
+$('savePose').onclick=()=>{
+  let n=$('poseName').value.trim()||'pose_'+Object.keys(savedPoses).length;
+  savedPoses[n]=q.slice();
+  refreshPoses();
+  $('poseList').value=n;
+  scheduleProjectWrite();
+  $('status').innerHTML='<span class="good">Posa salvata:</span> '+n;
+};
+$('playPose').onclick=()=>{
+  let n=$('poseList').value;
+  if(n&&savedPoses[n]){
+    clearTrail();
+    isRecordingTrail=true;
+    setPose(savedPoses[n]);
+  }
+};
+$('deletePose').onclick=()=>{
+  delete savedPoses[$('poseList').value];
+  refreshPoses();
+  scheduleProjectWrite();
+};
+
+function download(name,text){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/plain'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
+$('exportCpp').onclick=()=>{
+  let g=geo,w=smoothWeight,gs=globalSpeed,cpp=`// Generato da Digital Twin 6DOF v22.
+#pragma once
+#include <math.h>
+
+struct Robot6DOFIK {
+ static constexpr float d12=${g.d12}f,L1=${g.L1}f,d34=${g.d34}f,L2=${g.L2}f,d56=${g.d56}f,Lg=${g.Lg}f;
+ static constexpr float smoothWeight=${w}.0f;
+ static constexpr float globalSpeedFactor=${gs}.0f;
+ static constexpr float jointMaxSpeed[6]={${jointSpeeds.map(s=>s+'.0f').join(',')}};
+ static constexpr float defaultRest[6]={0.0f,47.0f,0.0f,-69.0f,7.0f,-68.0f};
+ static constexpr float qMin[6]={-135,-90,-135,-90,-135,-90};
+ static constexpr float qMax[6]={135,90,135,90,135,90};
+ static constexpr float DEG=0.01745329251994329577f;
+ static float clamp(float v,float a,float b){return v<a?a:(v>b?b:v);}
+ static void mm(const float A[3][3],const float B[3][3],float C[3][3]){for(int i=0;i<3;i++)for(int j=0;j<3;j++){C[i][j]=0;for(int k=0;k<3;k++)C[i][j]+=A[i][k]*B[k][j];}}
+ static void mv(const float A[3][3],const float v[3],float r[3]){for(int i=0;i<3;i++)r[i]=A[i][0]*v[0]+A[i][1]*v[1]+A[i][2]*v[2];}
+ static void fk(const float q[6],float end[3],float axis[3]){float M[3][3]={{1,0,0},{0,1,0},{0,0,1}},T[3][3],p[3]={0,0,0};const float len[6]={d12,L1,d34,L2,d56,Lg};for(int i=0;i<6;i++){float a=q[i]*DEG,c=cosf(a),s=sinf(a);float Q[3][3]={{c,0,s},{0,1,0},{-s,0,c}};if(!(i&1)){Q[0][0]=c;Q[0][1]=-s;Q[0][2]=0;Q[1][0]=s;Q[1][1]=c;Q[1][2]=0;Q[2][0]=0;Q[2][0]=0;Q[2][2]=1;}mm(M,Q,T);for(int r=0;r<3;r++)for(int c2=0;c2<3;c2++)M[r][c2]=T[r][c2];float z[3]={0,0,len[i]},w[3];mv(M,z,w);for(int k=0;k<3;k++)p[k]+=w[k];}for(int k=0;k<3;k++){end[k]=p[k];axis[k]=M[k][2];}}
+ static float posErr(const float a[3],const float b[3]){float x=a[0]-b[0],y=a[1]-b[1],z=a[2]-b[2];return sqrtf(x*x+y*y+z*z);}
+ static bool linear(float A[4][4],float b[4],int n,float x[4]){for(int k=0;k<n;k++){int p=k;for(int i=k+1;i<n;i++)if(fabsf(A[i][k])>fabsf(A[p][k]))p=i;if(fabsf(A[p][k])<1e-9f)return false;for(int j=k;j<n;j++){float t=A[k][j];A[k][j]=A[p][j];A[p][j]=t;}float t=b[k];b[k]=b[p];b[p]=t;float z=A[k][k];for(int j=k;j<n;j++)A[k][j]/=z;b[k]/=z;for(int i=0;i<n;i++)if(i!=k){float f=A[i][k];for(int j=k;j<n;j++)A[i][j]-=f*A[k][j];b[i]-=f*b[k];}}for(int i=0;i<n;i++)x[i]=b[i];return true;}
+ static bool solveSeed(const float target[3],const float seed[6],bool horizontal,float out[6],float &err){for(int i=0;i<6;i++)out[i]=seed[i];for(int it=0;it<450;it++){float end[3],ax[3];fk(out,end,ax);float e[4]={target[0]-end[0],target[1]-end[1],target[2]-end[2],-ax[2]*120};int n=horizontal?4:3;err=posErr(target,end);if(err<1.2f&&(!horizontal||fabsf(ax[2])<.02f))return true;float J[4][6]={0};for(int k=0;k<6;k++){float qp[6];for(int j=0;j<6;j++)qp[j]=out[j];qp[k]+=.02f;float ep[3],ap[3];fk(qp,ep,ap);for(int r=0;r<3;r++)J[r][k]=(ep[r]-end[r])/.02f;if(horizontal)J[3][k]=(ap[2]-ax[2])/.02f;}float A[4][4]={0},b[4],y[4];for(int r=0;r<n;r++){b[r]=e[r];for(int c=0;c<n;c++){for(int k=0;k<6;k++)A[r][c]+=J[r][k]*J[c][k];if(r==c)A[r][c]+=3;}}if(!linear(A,b,n,y))break;for(int k=0;k<6;k++){float d=0;for(int r=0;r<n;r++)d+=J[r][k]*y[r];out[k]=clamp(out[k]+clamp(d,-5,5),qMin[k],qMax[k]);}}float end[3],ax[3];fk(out,end,ax);err=posErr(target,end);return false;}
+ static bool solveIK(float x,float y,float z,bool horizontal,const float current[6],float result[6],float &errorMm){float target[3]={x,y,z};float yaw=atan2f(y,x)*57.2957795f;float seeds[9][6]={{yaw,38,0,-75,0,37},{yaw,25,0,-65,0,40},{yaw,48,0,-90,0,42},{0,47,0,-69,7,-68},{yaw,15,0,-50,0,35},{yaw,52,0,-105,0,53},{yaw,30,-10,-70,10,40},{45,30,-45,-60,0,0},{0,0,0,0,0,0}};for(int j=0;j<6;j++)seeds[8][j]=current[j];bool found=false;float best=1e30f,bestQ[6];float w=smoothWeight/50.0f;for(int s=0;s<9;s++){float q[6],e;bool ok=solveSeed(target,seeds[s],horizontal,q,e);if(ok){float cost=e*100;if(q[1]>52.0f) cost+=powf(q[1]-52.0f,2)*12.0f;if(q[1]<0.0f) cost+=powf(q[1],2)*18.0f;if(q[3]>-20.0f) cost+=powf(q[3]+20.0f,2)*35.0f+500.0f;cost+=fabsf(q[3]-(-75.0f))*2.0f;if(horizontal && w>0){cost+=w*(fabsf(q[1])*8.0f + fabsf(q[2])*10.0f + fabsf(q[4])*10.0f);if(fabsf(q[1])>48.0f) cost+=w*powf(fabsf(q[1])-48.0f,2)*8.0f;}for(int j=0;j<6;j++){float d=q[j]-defaultRest[j];float factor=(j==1?0.06f:(j==2||j==4)?0.02f:0.002f);cost+=factor*d*d;}if(cost<best){best=cost;errorMm=e;for(int j=0;j<6;j++)bestQ[j]=q[j];found=true;}}}if(found)for(int j=0;j<6;j++)result[j]=bestQ[j];return found;}
+};
+`;
+  download('robot6dof_esp32_ik.h',cpp);
+  $('status').innerHTML='<span class="good">IK C++ v22 esportata per ESP32.</span>';
+};
+
+/* === GESTIONE TOOLBAR E PANNELLI === */
+document.querySelectorAll('.tool').forEach(b=>b.onclick=()=>{
+  let pane=b.dataset.pane;
+  document.querySelectorAll('.tool').forEach(x=>x.classList.toggle('active',x===b));
+  
+  $('geoPane').hidden = !(pane==='motion');
+  $('motionPane').hidden = !(pane==='motion');
+  $('animPane').hidden = !(pane==='anim');
+  $('trailPane').hidden = !(pane==='trail');
+  $('cloudPane').hidden = !(pane==='cloud');
+  $('modelPane').hidden = !(pane==='model');
+  $('setupPane').hidden = !(pane==='setup');
+  $('speedPane').hidden = !(pane==='speed');
+  $('projectPane').hidden = !(pane==='project');
+});
+
+let f0=fk(q);dummyJoints=f0.pts.map(p=>p.slice());endpointDummy=f0.end.slice();
+transformControl.visible = false;
+transformControl.enabled = false;
+marker.visible = false;
+
+syncTarget();syncDummy();refreshPoses();refreshHierarchy();
+generateReachabilityCloud();
+refreshAnimGroupSelector();
+tick();
+
+autoInitOnStartup();
+</script>
+<script>document.querySelector('.tool.active').click();</script>
+</body>
+</html>
